@@ -15,6 +15,7 @@
  * Tiebreak: total_score DESC, then meal_count DESC (rewards engagement).
  */
 
+import { unstable_cache } from 'next/cache'
 import { formatInTimeZone } from 'date-fns-tz'
 import { adminClient } from '@/lib/supabase/admin'
 
@@ -38,7 +39,25 @@ export type LeaderboardResult = {
 const MIN_DAYS = { daily: 1, weekly: 5, monthly: 14, overall: 14 } as const
 const MIN_MEALS_FOR_DAILY = 2
 
+/**
+ * Public entry point — cached for 60s per (period, tz).
+ *
+ * The board changes slowly and is hit on every visit by ~7 users mostly in the
+ * same timezone, so a short cache turns repeated full re-queries into a single
+ * shared read. The date window (computed from `new Date()` inside the cached
+ * fn) may lag up to 60s — acceptable for a leaderboard. Safe to cache: the
+ * computation reads no cookies/headers, only `period`/`tz` args + the DB.
+ */
 export async function fetchLeaderboard(period: Period, requesterTz: string): Promise<LeaderboardResult> {
+  const cached = unstable_cache(
+    () => computeLeaderboard(period, requesterTz),
+    ['leaderboard', period, requesterTz],
+    { revalidate: 60, tags: ['leaderboard'] },
+  )
+  return cached()
+}
+
+async function computeLeaderboard(period: Period, requesterTz: string): Promise<LeaderboardResult> {
   const now = new Date()
   const today = formatInTimeZone(now, requesterTz, 'yyyy-MM-dd')
 
