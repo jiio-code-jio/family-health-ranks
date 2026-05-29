@@ -1,6 +1,7 @@
 import { adminClient } from '@/lib/supabase/admin'
 import { getSession } from '@/lib/auth/session'
 import { ProfileForm } from '@/components/ProfileForm'
+import { ResetCodeCard } from '@/components/ResetCodeCard'
 import { redirect } from 'next/navigation'
 
 export default async function ProfilePage() {
@@ -34,6 +35,8 @@ export default async function ProfilePage() {
           <strong>{Math.round(Number(user.daily_protein_target_g))} g protein</strong>
         </p>
       )}
+
+      <ResetCodeCard />
     </section>
   )
 }

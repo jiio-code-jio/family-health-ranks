@@ -45,7 +45,11 @@ export async function POST(req: NextRequest) {
   }
 
   // Mint a unique participation code (retry once on the unlikely hash collision).
+  // We return the plaintext code to the client ONCE — this is the only moment
+  // we ever have it. The user should save it; recovery is "reset & reveal" from
+  // the profile page while still logged in.
   let userId: string | null = null
+  let plainCode = ''
   for (let attempt = 0; attempt < 2 && !userId; attempt++) {
     const code = generateCode()
     const { data, error } = await supabase
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
       })
       .select('id')
       .single()
-    if (data) { userId = data.id; break }
+    if (data) { userId = data.id; plainCode = code; break }
     if (error && !error.message.includes('participation_code_hash')) {
       log.error('join', 'user insert failed', { error: error.message })
       return NextResponse.json({ error: 'could_not_create' }, { status: 500 })
@@ -72,7 +76,8 @@ export async function POST(req: NextRequest) {
     .eq('id', invite.id)
 
   const token = await signSession(userId)
-  const res = NextResponse.json({ ok: true, needs_profile: true })
+  // Return the plaintext code in the response body — client will show it once.
+  const res = NextResponse.json({ ok: true, needs_profile: true, code: plainCode })
   res.cookies.set(session.cookieName, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
