@@ -16,7 +16,7 @@ export default async function DashboardPage() {
   const supabase = adminClient()
   const { data: user } = await supabase
     .from('users')
-    .select('display_name, weight_kg, daily_kcal_target, daily_protein_target_g, goal, timezone')
+    .select('display_name, weight_kg, daily_kcal_target, daily_protein_target_g, goal, timezone, is_admin')
     .eq('id', sess.sub)
     .single()
   if (!user) redirect('/login')
@@ -86,6 +86,7 @@ export default async function DashboardPage() {
         target_ml: waterTargetMl(user.weight_kg),
       }}
       tips={tips}
+      isAdmin={user.is_admin === true}
     />
   )
 }

@@ -19,8 +19,8 @@ import { config as loadEnv } from 'dotenv'
 loadEnv({ path: '.env.local' })
 
 import { createClient } from '@supabase/supabase-js'
-import { randomBytes } from 'node:crypto'
 import { hashCode } from '../lib/auth/code-hash'
+import { generateCode } from '../lib/auth/code'
 
 function arg(flag: string): string | undefined {
   const i = process.argv.indexOf(flag)
@@ -29,17 +29,6 @@ function arg(flag: string): string | undefined {
 
 function hasFlag(flag: string): boolean {
   return process.argv.includes(flag)
-}
-
-function generateCode(): string {
-  const year = new Date().getFullYear()
-  const part = (n: number) =>
-    randomBytes(n)
-      .toString('base64')
-      .replace(/[^A-Z0-9]/gi, '')
-      .toUpperCase()
-      .slice(0, n)
-  return `FAM-${year}-${part(7)}-${part(3)}`
 }
 
 function printCode(label: string, id: string, code: string, tz?: string) {

@@ -7,6 +7,7 @@ import { DailyScoreCard } from './DailyScoreCard'
 import { WeekStrip, type DayCell } from './WeekStrip'
 import { WaterTracker } from './WaterTracker'
 import { TipsCard, type WeeklyTips } from './TipsCard'
+import { InviteCard } from './InviteCard'
 
 type Daily = {
   nutrition: number
@@ -27,11 +28,12 @@ type Props = {
   weekDays: DayCell[]
   water: { date: string; ml: number; target_ml: number }
   tips: WeeklyTips | null
+  isAdmin: boolean
 }
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<{ meals: Meal[]; date: string }>)
 
-export function DashboardLive({ displayName, initialMeals, initialDate, daily, targets, weekDays, water, tips }: Props) {
+export function DashboardLive({ displayName, initialMeals, initialDate, daily, targets, weekDays, water, tips, isAdmin }: Props) {
   // Poll /api/meals every 4s while any meal is still being identified.
   // The function form of refreshInterval re-evaluates on every fetch, so
   // polling auto-stops the moment the last pending meal flips to
@@ -95,6 +97,8 @@ export function DashboardLive({ displayName, initialMeals, initialDate, daily, t
           </div>
         )}
       </div>
+
+      {isAdmin && <InviteCard />}
     </section>
   )
 }
