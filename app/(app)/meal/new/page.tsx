@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { CameraCapture } from '@/components/CameraCapture'
+import { useT } from '@/components/design/ThemeProvider'
+import { Button, Chip } from '@/components/design/primitives'
+import { Icon } from '@/components/design/Icon'
+import { FONT_DISPLAY, FONT_MONO, FONT_UI } from '@/components/design/theme'
 
 type MealType = 'breakfast' | 'lunch' | 'snack' | 'dinner' | 'other'
 
@@ -17,27 +21,26 @@ function inferMealType(now = new Date()): MealType {
 
 const TYPES: { value: MealType; label: string }[] = [
   { value: 'breakfast', label: 'Breakfast' },
-  { value: 'lunch',     label: 'Lunch' },
-  { value: 'snack',     label: 'Snack' },
-  { value: 'dinner',    label: 'Dinner' },
-  { value: 'other',     label: 'Other' },
+  { value: 'lunch', label: 'Lunch' },
+  { value: 'snack', label: 'Snack' },
+  { value: 'dinner', label: 'Dinner' },
+  { value: 'other', label: 'Other' },
 ]
 
 type Phase = 'idle' | 'uploading' | 'submitted'
 
 export default function NewMealPage() {
+  const t = useT()
   const router = useRouter()
   const defaultType = useMemo(() => inferMealType(), [])
   const [mealType, setMealType] = useState<MealType>(defaultType)
   const [file, setFile] = useState<File | null>(null)
   const [metadata, setMetadata] = useState('')
   const [phase, setPhase] = useState<Phase>('idle')
-  const [progress, setProgress] = useState(0) // 0-100
+  const [progress, setProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const submittedRef = useRef(false)
 
-  // Warn before navigation if there's a selected photo that hasn't been submitted yet.
-  // Without this, a tap on "Rank" wipes the in-progress selection silently.
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (file && !submittedRef.current) {
@@ -51,7 +54,10 @@ export default function NewMealPage() {
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!file) return setError('Pick a photo first.')
+    if (!file) {
+      setError('Pick a photo first.')
+      return
+    }
     setError(null)
     setPhase('uploading')
     setProgress(0)
@@ -62,8 +68,6 @@ export default function NewMealPage() {
     form.append('eaten_at', new Date().toISOString())
     if (metadata.trim()) form.append('metadata', metadata.trim())
 
-    // XHR instead of fetch so we can report upload progress to the user — fetch
-    // doesn't expose an upload-progress event in any stable browser yet.
     const xhr = new XMLHttpRequest()
     xhr.open('POST', '/api/meals')
     xhr.upload.addEventListener('progress', (ev) => {
@@ -77,7 +81,11 @@ export default function NewMealPage() {
         router.refresh()
       } else {
         let msg = 'Upload failed.'
-        try { msg = (JSON.parse(xhr.responseText) as { error?: string }).error ?? msg } catch { /* keep default */ }
+        try {
+          msg = (JSON.parse(xhr.responseText) as { error?: string }).error ?? msg
+        } catch {
+          /* keep default */
+        }
         setError(msg)
         setPhase('idle')
       }
@@ -91,65 +99,154 @@ export default function NewMealPage() {
 
   const busy = phase !== 'idle'
   const buttonLabel =
-    phase === 'uploading' && progress < 100 ? `Uploading ${progress}%…` :
-    phase === 'uploading'                   ? 'Saving…' :
-    phase === 'submitted'                   ? 'Saved' :
-                                              'Save meal'
+    phase === 'uploading' && progress < 100
+      ? `Uploading ${progress}%…`
+      : phase === 'uploading'
+        ? 'Saving…'
+        : phase === 'submitted'
+          ? 'Saved'
+          : 'Save meal'
 
   return (
-    <section className="mx-auto max-w-md space-y-6 px-6 py-8">
-      <header>
-        <h1 className="text-xl font-semibold">Log a meal</h1>
-        <p className="text-sm opacity-70">Snap or pick a photo — we’ll identify it and let you confirm before scoring.</p>
-      </header>
+    <section style={{ maxWidth: 460, margin: '0 auto', padding: '60px 18px 0' }}>
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 18,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => router.back()}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+          aria-label="Back"
+        >
+          <Icon name="chevron-left" size={24} sw={2.4} color={t.text} />
+        </button>
+        <div
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontWeight: 800,
+            fontSize: 20,
+            color: t.text,
+          }}
+        >
+          New meal
+        </div>
+        <div style={{ width: 24 }} />
+      </div>
 
-      <form onSubmit={submit} className="space-y-6">
-        <div className="flex flex-wrap gap-2">
-          {TYPES.map((t) => (
-            <button
-              type="button"
-              key={t.value}
-              onClick={() => setMealType(t.value)}
-              className={`rounded-full border px-3 py-1 text-sm transition ${
-                mealType === t.value
-                  ? 'border-foreground bg-foreground text-background'
-                  : 'border-black/15 dark:border-white/20'
-              }`}
+      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        {/* Meal type chips */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {TYPES.map((ty) => (
+            <Chip
+              key={ty.value}
+              active={mealType === ty.value}
+              onClick={() => setMealType(ty.value)}
             >
-              {t.label}
-            </button>
+              {ty.label}
+            </Chip>
           ))}
         </div>
 
         <CameraCapture onFile={setFile} disabled={busy} />
 
-        <label className="block">
-          <span className="text-xs font-medium uppercase tracking-wide opacity-60">Note (optional)</span>
+        {/* Note */}
+        <div>
+          <div
+            style={{
+              fontFamily: FONT_UI,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: 0.8,
+              textTransform: 'uppercase',
+              color: t.textFaint,
+              margin: '0 0 7px 2px',
+            }}
+          >
+            Note (optional)
+          </div>
           <input
             type="text"
             value={metadata}
             onChange={(e) => setMetadata(e.target.value)}
             maxLength={500}
             placeholder="e.g. extra ghee, shared with brother"
-            className="mt-1 block w-full rounded-md border border-black/15 bg-transparent px-3 py-2 focus:border-foreground focus:outline-none dark:border-white/20"
+            style={{
+              width: '100%',
+              background: t.surface,
+              border: `1px solid ${t.border}`,
+              borderRadius: 12,
+              padding: '12px 14px',
+              color: t.text,
+              fontFamily: FONT_UI,
+              fontSize: 14,
+              outline: 'none',
+            }}
           />
-        </label>
+        </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && (
+          <p
+            style={{
+              fontFamily: FONT_UI,
+              fontSize: 13,
+              color: 'oklch(0.68 0.2 25)',
+              margin: 0,
+            }}
+          >
+            {error}
+          </p>
+        )}
 
         {phase === 'uploading' && (
-          <div className="h-1 w-full overflow-hidden rounded bg-black/10 dark:bg-white/10">
-            <div className="h-full bg-foreground transition-[width] duration-200" style={{ width: `${progress}%` }} />
+          <div
+            style={{
+              height: 6,
+              borderRadius: 99,
+              background: t.track,
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                height: '100%',
+                width: `${progress}%`,
+                background: `linear-gradient(90deg, ${t.brand}aa, ${t.brand})`,
+                boxShadow: `0 0 10px ${t.brand}88`,
+                transition: 'width .2s ease',
+              }}
+            />
           </div>
         )}
 
-        <button
-          type="submit"
-          disabled={busy || !file}
-          className="w-full rounded-md bg-foreground py-2 text-background disabled:opacity-40"
-        >
+        <Button kind="brand" full type="submit" disabled={busy || !file} icon="spark">
           {buttonLabel}
-        </button>
+        </Button>
+
+        {phase === 'uploading' && (
+          <div
+            style={{
+              textAlign: 'center',
+              fontFamily: FONT_MONO,
+              fontSize: 11,
+              color: t.textFaint,
+            }}
+          >
+            We&apos;ll identify it and let you confirm before scoring.
+          </div>
+        )}
       </form>
     </section>
   )

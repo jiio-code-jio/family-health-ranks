@@ -2,6 +2,9 @@ import { adminClient } from '@/lib/supabase/admin'
 import { getSession } from '@/lib/auth/session'
 import { ProfileForm } from '@/components/ProfileForm'
 import { ResetCodeCard } from '@/components/ResetCodeCard'
+import { ProfileHeader } from '@/components/ProfileHeader'
+import { fetchWeekStrip } from '@/lib/scoring/week'
+import { fetchLeaderboard } from '@/lib/scoring/leaderboard'
 import { redirect } from 'next/navigation'
 
 export default async function ProfilePage() {
@@ -16,27 +19,42 @@ export default async function ProfilePage() {
 
   if (!user) redirect('/login')
 
+  const tz = user.timezone ?? 'UTC'
+  const [weekDays, board] = await Promise.all([
+    fetchWeekStrip(sess.sub, tz),
+    fetchLeaderboard('daily', tz),
+  ])
+
+  const rankIdx = board.rows.findIndex((r) => r.user_id === sess.sub)
+  const rank = rankIdx >= 0 ? rankIdx + 1 : null
+  // Streak: consecutive non-null days from today backwards.
+  let streak = 0
+  for (let i = weekDays.length - 1; i >= 0; i--) {
+    if (weekDays[i].score != null) streak++
+    else break
+  }
+  const bestThisWeek = weekDays
+    .map((d) => d.score ?? 0)
+    .reduce((a, b) => Math.max(a, b), 0)
+
   return (
-    <section className="mx-auto max-w-md space-y-6 px-6 py-8">
-      <header>
-        <h1 className="text-xl font-semibold">{user.display_name}</h1>
-        <p className="text-sm opacity-70">
-          {user.weight_kg === null
-            ? 'Tell us a bit about you so we can score your meals correctly.'
-            : 'Update your profile any time. New targets apply from today.'}
-        </p>
-      </header>
+    <section
+      className="hr-scroll"
+      style={{ maxWidth: 460, margin: '0 auto', padding: '60px 18px 0' }}
+    >
+      <ProfileHeader
+        displayName={user.display_name}
+        rank={rank}
+        streak={streak}
+        bestDay={Math.round(bestThisWeek)}
+        unsavedPrompt={user.weight_kg === null}
+      />
 
       <ProfileForm initial={user} />
 
-      {user.daily_kcal_target !== null && (
-        <p className="rounded-md bg-black/5 px-3 py-2 text-sm dark:bg-white/5">
-          Daily target: <strong>{Math.round(Number(user.daily_kcal_target))} kcal</strong>,{' '}
-          <strong>{Math.round(Number(user.daily_protein_target_g))} g protein</strong>
-        </p>
-      )}
-
+      <div style={{ height: 16 }} />
       <ResetCodeCard />
+      <div style={{ height: 16 }} />
     </section>
   )
 }

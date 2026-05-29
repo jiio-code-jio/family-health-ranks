@@ -1,26 +1,34 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0A0C0B;
+  --foreground: #F2F5F2;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-archivo);
+  --font-display: var(--font-archivo-expanded);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
+html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-archivo), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
+
+* { -webkit-tap-highlight-color: transparent; }
+
+.hr-scroll::-webkit-scrollbar { width: 0; height: 0; }
+.hr-scroll { scrollbar-width: none; }
+
+@keyframes hrFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes hrPop { 0% { transform: scale(0.8); opacity: 0; } 60% { transform: scale(1.04); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes hrShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+@keyframes hrScan { 0% { top: 4%; } 100% { top: 96%; } }
+@keyframes hrPulseGlow { 0%,100% { opacity: 0.5; } 50% { opacity: 1; } }
+@keyframes hrWave { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+@keyframes hrSpinDash { to { stroke-dashoffset: 0; } }

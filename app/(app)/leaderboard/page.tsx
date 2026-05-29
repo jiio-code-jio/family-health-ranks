@@ -22,5 +22,5 @@ export default async function LeaderboardPage({ searchParams }: { searchParams: 
 
   const initial = await fetchLeaderboard(period, tz)
 
-  return <LeaderboardLive initial={{ ...initial, current_user_id: sess.sub }} />
+  return <LeaderboardLive initial={{ ...initial, current_user_id: sess.sub }} circleName="Your circle" />
 }

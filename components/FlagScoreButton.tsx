@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useT } from './design/ThemeProvider'
+import { Button, Card } from './design/primitives'
+import { FONT_UI, FONT_MONO } from './design/theme'
 
 type FeedbackResponse = {
   ok: boolean
@@ -14,6 +17,7 @@ type FeedbackResponse = {
 type Phase = 'idle' | 'open' | 'sending' | 'done'
 
 export function FlagScoreButton({ mealId }: { mealId: string }) {
+  const t = useT()
   const router = useRouter()
   const [phase, setPhase] = useState<Phase>('idle')
   const [note, setNote] = useState('')
@@ -30,7 +34,6 @@ export function FlagScoreButton({ mealId }: { mealId: string }) {
       const json = (await res.json()) as FeedbackResponse
       setOutcome(json)
       setPhase('done')
-      // Pull the freshly re-scored meal + daily total into the page.
       router.refresh()
     } catch {
       setOutcome({ ok: false, rescored: false, reason: 'network' })
@@ -40,61 +43,80 @@ export function FlagScoreButton({ mealId }: { mealId: string }) {
 
   if (phase === 'done' && outcome) {
     return (
-      <div className="rounded-md border border-black/10 bg-black/[0.03] px-3 py-2 text-xs dark:border-white/10 dark:bg-white/[0.03]">
+      <Card pad={12} style={{ marginTop: 12 }}>
         {outcome.rescored ? (
-          <p>
+          <p style={{ margin: 0, fontFamily: FONT_UI, fontSize: 12.5, color: t.text }}>
             ✓ Re-checked with premium AI.{' '}
             {typeof outcome.old_score === 'number' && typeof outcome.score === 'number' ? (
               <span>
-                Score {Math.round(outcome.old_score)} → <strong>{Math.round(outcome.score)}</strong>.
+                Score {Math.round(outcome.old_score)} →{' '}
+                <strong style={{ fontFamily: FONT_MONO }}>{Math.round(outcome.score)}</strong>.
               </span>
             ) : (
               <span>Updated.</span>
             )}{' '}
-            <span className="opacity-60">Scroll up to see the new foods — tweak any portion and re-score if needed.</span>
+            <span style={{ color: t.textFaint }}>
+              Scroll up to see the new foods — tweak any portion and re-score if needed.
+            </span>
           </p>
         ) : (
-          <p>
-            ✓ Thanks — we’ve flagged this for review.
+          <p style={{ margin: 0, fontFamily: FONT_UI, fontSize: 12.5, color: t.text }}>
+            ✓ Thanks — we&apos;ve flagged this for review.
             {outcome.reason === 'not_food' && ' (The AI couldn’t find food on a re-check.)'}
           </p>
         )}
-      </div>
+      </Card>
     )
   }
 
   if (phase === 'open' || phase === 'sending') {
     return (
-      <div className="space-y-2 rounded-md border border-black/10 px-3 py-3 dark:border-white/10">
-        <p className="text-xs font-medium">What looks off? (optional)</p>
+      <Card pad={12} style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <p
+          style={{
+            margin: 0,
+            fontFamily: FONT_UI,
+            fontWeight: 700,
+            fontSize: 12.5,
+            color: t.text,
+          }}
+        >
+          What looks off? (optional)
+        </p>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           maxLength={500}
           rows={2}
           placeholder="e.g. that's dal, not sambar; portion was bigger"
-          className="block w-full rounded border border-black/15 bg-transparent px-2 py-1 text-sm focus:border-foreground focus:outline-none dark:border-white/20"
           disabled={phase === 'sending'}
+          style={{
+            width: '100%',
+            background: t.surface2,
+            border: `1px solid ${t.border}`,
+            borderRadius: 10,
+            padding: '8px 10px',
+            color: t.text,
+            fontFamily: FONT_UI,
+            fontSize: 13,
+            outline: 'none',
+            resize: 'vertical',
+          }}
         />
-        <div className="flex gap-2">
-          <button
-            type="button"
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            kind="brand"
             onClick={send}
             disabled={phase === 'sending'}
-            className="flex-1 rounded-md bg-foreground py-1.5 text-sm text-background disabled:opacity-40"
+            full
           >
-            {phase === 'sending' ? 'Re-checking…' : 'Flag & re-check with AI'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setPhase('idle')}
-            disabled={phase === 'sending'}
-            className="rounded-md border border-black/15 px-3 py-1.5 text-sm dark:border-white/20"
-          >
+            {phase === 'sending' ? 'Re-checking…' : 'Flag & re-check'}
+          </Button>
+          <Button kind="surface" onClick={() => setPhase('idle')} disabled={phase === 'sending'}>
             Cancel
-          </button>
+          </Button>
         </div>
-      </div>
+      </Card>
     )
   }
 
@@ -102,7 +124,19 @@ export function FlagScoreButton({ mealId }: { mealId: string }) {
     <button
       type="button"
       onClick={() => setPhase('open')}
-      className="block w-full text-center text-[11px] opacity-50 hover:opacity-80"
+      style={{
+        display: 'block',
+        width: '100%',
+        textAlign: 'center',
+        fontFamily: FONT_UI,
+        fontSize: 11.5,
+        color: t.textFaint,
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 0',
+        marginTop: 4,
+      }}
     >
       Score looks wrong? Flag &amp; re-check with AI
     </button>

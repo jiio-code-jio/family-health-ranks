@@ -1,6 +1,11 @@
 'use client'
 
 import type { Meal } from './MealCard'
+import { useT } from './design/ThemeProvider'
+import { Card, SectionLabel, TrendBadge } from './design/primitives'
+import { MacroBar, MiniRing, ScoreRing } from './design/viz'
+import { FONT_UI, FONT_MONO, scoreColor } from './design/theme'
+import type { IconName } from './design/Icon'
 
 type Daily = {
   nutrition: number
@@ -20,98 +25,175 @@ type Targets = {
 type Props = {
   daily: Daily
   targets: Targets
-  meals: Meal[] // for live kcal/protein totals (server-side daily lags for unscored items, but for v1 we just show scored macros)
+  meals: Meal[]
 }
+
+const COMPONENTS: Array<{ key: keyof NonNullable<Daily>; label: string; weight: number; icon: IconName }> = [
+  { key: 'nutrition', label: 'Nutrition', weight: 40, icon: 'leaf' },
+  { key: 'goal_alignment', label: 'Goal align', weight: 25, icon: 'goal' },
+  { key: 'hydration', label: 'Hydration', weight: 10, icon: 'water' },
+  { key: 'consistency', label: 'Consistency', weight: 10, icon: 'clock' },
+]
 
 export function DailyScoreCard({ daily, targets, meals }: Props) {
-  const total = daily?.total_score ?? 15 // 15 = baseline from the placeholder MealTiming slot
+  const t = useT()
+  const total = daily?.total_score ?? 15
   const rounded = Math.round(total)
-  const ring =
-    rounded >= 80 ? 'border-emerald-500 text-emerald-500' :
-    rounded >= 60 ? 'border-amber-500 text-amber-500' :
-    rounded >= 30 ? 'border-zinc-400 text-zinc-500 dark:text-zinc-400' :
-                    'border-red-500 text-red-500'
+  const ringColor = scoreColor(rounded)
 
-  // Sum macros across all scored meals (matches what the daily aggregate sees).
   const dailyMacros = sumMacros(meals)
-  const kcalPct = clamp01(dailyMacros.kcal / targets.daily_kcal_target)
-  const proteinPct = clamp01(dailyMacros.protein_g / targets.daily_protein_target_g)
-
-  const scoredCount = meals.filter((m) => m.processing_status === 'scored').length
-  const pendingCount = meals.filter(
-    (m) => m.processing_status === 'pending_identify' || m.processing_status === 'awaiting_confirmation'
-  ).length
 
   return (
-    <section className="rounded-lg border border-black/10 p-4 dark:border-white/10">
-      <div className="flex items-center gap-4">
-        <div className={`grid h-16 w-16 shrink-0 place-items-center rounded-full border-4 text-xl font-bold ${ring}`}>
-          {rounded}
+    <>
+      <Card
+        pad={20}
+        elev
+        style={{ marginBottom: 16, position: 'relative', overflow: 'hidden' }}
+      >
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: -60,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 280,
+            height: 280,
+            borderRadius: '50%',
+            background: ringColor + '22',
+            filter: 'blur(50px)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}
+        >
+          <ScoreRing score={rounded} size={224} />
+          {daily && (
+            <div
+              style={{
+                marginTop: 14,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: t.surface2,
+                border: `1px solid ${t.border}`,
+                borderRadius: 999,
+                padding: '6px 13px',
+              }}
+            >
+              <TrendBadge value={null} size={13} />
+              <span style={{ fontFamily: FONT_UI, fontSize: 12.5, color: t.textMute }}>
+                {daily.meal_count} {daily.meal_count === 1 ? 'meal' : 'meals'} scored
+              </span>
+            </div>
+          )}
+          {!daily && (
+            <div
+              style={{
+                marginTop: 14,
+                fontFamily: FONT_UI,
+                fontSize: 12.5,
+                color: t.textMute,
+              }}
+            >
+              Log a meal to begin
+            </div>
+          )}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Today’s score</p>
-          <p className="text-xs opacity-60">
-            {scoredCount} scored
-            {pendingCount > 0 && ` · ${pendingCount} pending`}
-            {scoredCount + pendingCount === 0 && ' · log a meal to begin'}
-          </p>
+        <div style={{ height: 1, background: t.border, margin: '18px 0 16px' }} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <MacroBar
+            icon="bolt"
+            label="Calories"
+            value={dailyMacros.kcal}
+            target={Math.round(targets.daily_kcal_target)}
+            unit="kcal"
+            color={t.brand}
+            delay={400}
+          />
+          <MacroBar
+            icon="protein"
+            label="Protein"
+            value={dailyMacros.protein_g}
+            target={Math.round(targets.daily_protein_target_g)}
+            unit="g"
+            color={t.cyan}
+            delay={520}
+          />
         </div>
-      </div>
-
-      <div className="mt-4 space-y-2 text-xs">
-        <Bar label="Calories" actual={`${dailyMacros.kcal}`} target={`${Math.round(targets.daily_kcal_target)} kcal`} pct={kcalPct} />
-        <Bar label="Protein" actual={`${Math.round(dailyMacros.protein_g)}`} target={`${Math.round(targets.daily_protein_target_g)} g`} pct={proteinPct} />
-      </div>
+      </Card>
 
       {daily && (
-        <>
-          <div className="mt-4 grid grid-cols-4 gap-2 text-xs">
-            <Mini label="Nutrition" value={daily.nutrition} weight={40} />
-            <Mini label="Goal align." value={daily.goal_alignment} weight={25} />
-            <Mini label="Hydration" value={daily.hydration} weight={10} />
-            <Mini label="Consistency" value={daily.consistency} weight={10} />
-          </div>
-          <p className="mt-2 text-[11px] opacity-50">
-            + 15 baseline from Meal timing (activated later)
-          </p>
-        </>
+        <div style={{ marginBottom: 16 }}>
+          <SectionLabel
+            right={
+              <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: t.textFaint }}>
+                +15 timing baseline
+              </span>
+            }
+          >
+            Score breakdown
+          </SectionLabel>
+          <Card pad={14}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+              {COMPONENTS.map((c, i) => {
+                const v = Math.round(Number(daily[c.key] ?? 0))
+                return (
+                  <div
+                    key={c.key as string}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 4px',
+                      borderRadius: 14,
+                      background: t.surface2,
+                    }}
+                  >
+                    <MiniRing score={v} size={48} stroke={5} delay={300 + i * 90} />
+                    <div style={{ textAlign: 'center' }}>
+                      <div
+                        style={{
+                          fontFamily: FONT_UI,
+                          fontWeight: 700,
+                          fontSize: 11,
+                          color: t.text,
+                          lineHeight: 1.1,
+                        }}
+                      >
+                        {c.label}
+                      </div>
+                      <div style={{ fontFamily: FONT_MONO, fontSize: 10, color: t.textFaint, marginTop: 2 }}>
+                        {c.weight}%
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </Card>
+        </div>
       )}
-    </section>
+    </>
   )
-}
-
-function Bar({ label, actual, target, pct }: { label: string; actual: string; target: string; pct: number }) {
-  return (
-    <div>
-      <div className="flex justify-between">
-        <span className="opacity-70">{label}</span>
-        <span><strong>{actual}</strong> <span className="opacity-50">/ {target}</span></span>
-      </div>
-      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-black/10 dark:bg-white/10">
-        <div className="h-full bg-foreground transition-[width] duration-300" style={{ width: `${pct * 100}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function Mini({ label, value, weight }: { label: string; value: number; weight: number }) {
-  return (
-    <div className="rounded border border-black/10 p-2 dark:border-white/10">
-      <p className="text-[10px] opacity-60">{label}</p>
-      <p className="text-lg font-semibold">{Math.round(value)}</p>
-      <p className="text-[10px] opacity-50">weight {weight}%</p>
-    </div>
-  )
-}
-
-function clamp01(n: number): number {
-  if (!Number.isFinite(n) || n < 0) return 0
-  return Math.min(1, n)
 }
 
 type MealMacros = {
-  protein_g?: number; carbs_g?: number; fat_g?: number; fiber_g?: number
-  sat_fat_g?: number; sugar_g?: number; sodium_mg?: number; kcal?: number
+  protein_g?: number
+  carbs_g?: number
+  fat_g?: number
+  fiber_g?: number
+  sat_fat_g?: number
+  sugar_g?: number
+  sodium_mg?: number
+  kcal?: number
 }
 
 function sumMacros(meals: Meal[]): { kcal: number; protein_g: number } {
@@ -119,7 +201,6 @@ function sumMacros(meals: Meal[]): { kcal: number; protein_g: number } {
   let protein_g = 0
   for (const m of meals) {
     if (m.processing_status !== 'scored') continue
-    // macros is jsonb on the row; meals listing endpoint returns it directly.
     const mac = ((m as unknown as { macros?: MealMacros | null }).macros) ?? {}
     kcal += Number(mac.kcal ?? 0)
     protein_g += Number(mac.protein_g ?? 0)

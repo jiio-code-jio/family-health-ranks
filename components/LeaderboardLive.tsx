@@ -4,62 +4,89 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import useSWR from 'swr'
 import { LeaderboardTable } from './LeaderboardTable'
 import type { LeaderboardResult, Period } from '@/lib/scoring/leaderboard'
+import { useT } from './design/ThemeProvider'
+import { SegTabs } from './design/primitives'
+import { FONT_DISPLAY, FONT_UI } from './design/theme'
+import { Icon } from './design/Icon'
 
 type ApiResp = LeaderboardResult & { current_user_id: string }
 
-const TABS: Array<{ period: Period; label: string }> = [
-  { period: 'daily',   label: 'Today' },
-  { period: 'weekly',  label: 'Week' },
-  { period: 'monthly', label: 'Month' },
-  { period: 'overall', label: 'All time' },
+const TABS: Array<{ v: Period; label: string }> = [
+  { v: 'daily', label: 'Today' },
+  { v: 'weekly', label: 'Week' },
+  { v: 'monthly', label: 'Month' },
+  { v: 'overall', label: 'All' },
 ]
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<ApiResp>)
 
 type Props = {
   initial: ApiResp
+  circleName?: string
 }
 
-export function LeaderboardLive({ initial }: Props) {
+export function LeaderboardLive({ initial, circleName }: Props) {
+  const t = useT()
   const router = useRouter()
   const params = useSearchParams()
-  const active = (params.get('period') ?? 'daily') as Period
+  const active = (params?.get('period') ?? 'daily') as Period
 
   const { data } = useSWR(`/api/leaderboard?period=${active}`, fetcher, {
     fallbackData: active === initial.period ? initial : undefined,
-    refreshInterval: 30_000, // gentler than dashboard's 4s — leaderboard moves slowly
+    refreshInterval: 30_000,
     revalidateOnFocus: true,
   })
 
   function setTab(period: Period) {
-    const sp = new URLSearchParams(params)
+    const sp = new URLSearchParams(params ? params.toString() : '')
     sp.set('period', period)
     router.replace(`/leaderboard?${sp.toString()}`)
   }
 
-  return (
-    <section className="mx-auto max-w-2xl space-y-5 px-6 py-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Leaderboard</h1>
-        <p className="text-xs opacity-60">Everyone with a participation code, ranked by healthiness of eating.</p>
-      </header>
+  const totalMembers = data ? data.rows.length + data.ineligible_count : 0
 
-      <nav className="flex gap-1 overflow-x-auto rounded-md border border-black/10 p-1 text-sm dark:border-white/10">
-        {TABS.map((t) => (
-          <button
-            key={t.period}
-            type="button"
-            onClick={() => setTab(t.period)}
-            className={`flex-1 rounded px-3 py-1.5 transition ${active === t.period ? 'bg-foreground text-background' : 'opacity-70 hover:opacity-100'}`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+  return (
+    <section
+      className="hr-scroll"
+      style={{ maxWidth: 460, margin: '0 auto', padding: '60px 18px 0' }}
+    >
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontFamily: FONT_DISPLAY,
+            fontWeight: 800,
+            fontSize: 27,
+            color: t.text,
+            letterSpacing: -0.5,
+          }}
+        >
+          Leaderboard
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+          <Icon name="user" size={13} sw={2.2} color={t.textFaint} />
+          <span style={{ fontFamily: FONT_UI, fontSize: 12.5, color: t.textMute }}>
+            {circleName ?? 'Your circle'}
+            {totalMembers > 0 ? ` · ${totalMembers} ranked` : ''}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <SegTabs<Period> options={TABS} value={active} onChange={setTab} size="sm" />
+      </div>
 
       {data && (
         <>
-          <p className="text-xs opacity-60">{data.period_label}</p>
+          <p
+            style={{
+              fontFamily: FONT_UI,
+              fontSize: 11.5,
+              color: t.textFaint,
+              margin: '0 4px 10px',
+            }}
+          >
+            {data.period_label}
+          </p>
           <LeaderboardTable
             period={data.period}
             rows={data.rows}
@@ -68,6 +95,18 @@ export function LeaderboardLive({ initial }: Props) {
           />
         </>
       )}
+
+      <div
+        style={{
+          marginTop: 14,
+          textAlign: 'center',
+          fontFamily: FONT_UI,
+          fontSize: 12,
+          color: t.textFaint,
+        }}
+      >
+        Ranks update live as your circle logs meals.
+      </div>
     </section>
   )
 }

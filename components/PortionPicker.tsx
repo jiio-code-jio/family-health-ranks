@@ -1,6 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useT } from './design/ThemeProvider'
+import { SegTabs } from './design/primitives'
+import { FONT_MONO, FONT_UI } from './design/theme'
 
 export type PortionSize = 'small' | 'medium' | 'large' | 'custom'
 
@@ -15,18 +18,13 @@ type Props = {
   disabled?: boolean
 }
 
-const SIZES: { value: 'small' | 'medium' | 'large'; label: string }[] = [
-  { value: 'small',  label: 'S' },
-  { value: 'medium', label: 'M' },
-  { value: 'large',  label: 'L' },
-]
+type Preset = 'small' | 'medium' | 'large'
 
 export function PortionPicker({ value, defaults, onChange, disabled }: Props) {
-  const [customText, setCustomText] = useState(
-    value.size === 'custom' ? String(value.grams) : ''
-  )
+  const t = useT()
+  const [customText, setCustomText] = useState(value.size === 'custom' ? String(value.grams) : '')
 
-  function pickSize(size: 'small' | 'medium' | 'large') {
+  function pickSize(size: Preset) {
     onChange({ size, grams: defaults[size] })
     setCustomText('')
   }
@@ -39,35 +37,55 @@ export function PortionPicker({ value, defaults, onChange, disabled }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs">
-      {SIZES.map((s) => {
-        const active = value.size === s.value
-        return (
-          <button
-            key={s.value}
-            type="button"
-            disabled={disabled}
-            onClick={() => pickSize(s.value)}
-            title={`${defaults[s.value]} g`}
-            className={`rounded-md px-2 py-1 ${active ? 'bg-foreground text-background' : 'border border-black/15 dark:border-white/20'}`}
-          >
-            {s.label}
-            <span className="ml-1 opacity-60">{defaults[s.value]}g</span>
-          </button>
-        )
-      })}
-      <input
-        type="number"
-        min={1}
-        max={2000}
-        inputMode="numeric"
-        placeholder="g"
-        value={customText}
-        onChange={(e) => setCustom(e.target.value)}
-        disabled={disabled}
-        className={`w-16 rounded-md border bg-transparent px-2 py-1 ${value.size === 'custom' ? 'border-foreground' : 'border-black/15 dark:border-white/20'}`}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <SegTabs<Preset>
+        size="sm"
+        options={[
+          { v: 'small', label: `Small · ${defaults.small} g` },
+          { v: 'medium', label: `Medium · ${defaults.medium} g` },
+          { v: 'large', label: `Large · ${defaults.large} g` },
+        ]}
+        value={value.size === 'custom' ? 'medium' : (value.size as Preset)}
+        onChange={(v) => !disabled && pickSize(v)}
       />
-      <span className="opacity-60">{value.grams}g total</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input
+          type="number"
+          min={1}
+          max={2000}
+          inputMode="numeric"
+          placeholder="custom g"
+          value={customText}
+          onChange={(e) => setCustom(e.target.value)}
+          disabled={disabled}
+          style={{
+            width: 86,
+            background: t.surface2,
+            border: `1px solid ${value.size === 'custom' ? t.brand : t.border}`,
+            borderRadius: 10,
+            padding: '6px 10px',
+            color: t.text,
+            fontFamily: FONT_MONO,
+            fontSize: 13,
+            outline: 'none',
+          }}
+        />
+        <span style={{ fontFamily: FONT_MONO, fontSize: 12, color: t.textFaint }}>
+          = {value.grams} g
+        </span>
+        <span
+          style={{
+            marginLeft: 'auto',
+            fontFamily: FONT_UI,
+            fontSize: 10.5,
+            textTransform: 'uppercase',
+            letterSpacing: 0.6,
+            color: t.textFaint,
+          }}
+        >
+          {value.size === 'custom' ? 'custom' : value.size}
+        </span>
+      </div>
     </div>
   )
 }

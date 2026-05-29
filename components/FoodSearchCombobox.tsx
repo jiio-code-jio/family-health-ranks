@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { useT } from './design/ThemeProvider'
+import { FONT_MONO, FONT_UI } from './design/theme'
+import { Icon } from './design/Icon'
 
 export type FoodSearchResult = {
   id: string
@@ -15,18 +18,17 @@ type Props = {
   onCancel?: () => void
   placeholder?: string
   autoFocus?: boolean
-  /** Pre-fills the input + triggers a search on open. Useful when launching
-   *  the search from an unmatched chip — user lands on relevant matches
-   *  without having to type. */
   initialQuery?: string
 }
 
-/**
- * Inline taxonomy search. Debounced fetch to /api/foods.
- * Used in the confirmation UI both for adding a new food and for swapping
- * one already in the draft list.
- */
-export function FoodSearchCombobox({ onSelect, onCancel, placeholder = 'Search foods…', autoFocus, initialQuery }: Props) {
+export function FoodSearchCombobox({
+  onSelect,
+  onCancel,
+  placeholder = 'Search foods…',
+  autoFocus,
+  initialQuery,
+}: Props) {
+  const t = useT()
   const [q, setQ] = useState(initialQuery ?? '')
   const [results, setResults] = useState<FoodSearchResult[]>([])
   const [busy, setBusy] = useState(false)
@@ -36,8 +38,6 @@ export function FoodSearchCombobox({ onSelect, onCancel, placeholder = 'Search f
   useEffect(() => {
     if (autoFocus) {
       inputRef.current?.focus()
-      // Select the pre-filled text so a quick keystroke replaces it without
-      // forcing the user to clear it character by character.
       if (initialQuery) inputRef.current?.select()
     }
   }, [autoFocus, initialQuery])
@@ -55,38 +55,111 @@ export function FoodSearchCombobox({ onSelect, onCancel, placeholder = 'Search f
         setBusy(false)
       }
     }, 180)
-    return () => { if (debounce.current) window.clearTimeout(debounce.current) }
+    return () => {
+      if (debounce.current) window.clearTimeout(debounce.current)
+    }
   }, [q])
 
   return (
-    <div className="rounded-md border border-black/15 bg-background p-2 shadow-sm dark:border-white/20">
-      <div className="flex items-center gap-2">
+    <div
+      style={{
+        background: t.surface2,
+        border: `1px solid ${t.borderHi}`,
+        borderRadius: 14,
+        padding: 10,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input
           ref={inputRef}
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={placeholder}
-          className="w-full rounded-md border border-black/15 bg-transparent px-2 py-1 text-sm focus:border-foreground focus:outline-none dark:border-white/20"
+          style={{
+            flex: 1,
+            background: t.surface,
+            border: `1px solid ${t.border}`,
+            borderRadius: 10,
+            padding: '8px 12px',
+            color: t.text,
+            fontFamily: FONT_UI,
+            fontSize: 14,
+            outline: 'none',
+          }}
         />
         {onCancel && (
-          <button type="button" onClick={onCancel} className="text-sm opacity-70 hover:opacity-100">Cancel</button>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'inline-flex',
+              alignItems: 'center',
+              color: t.textMute,
+            }}
+            aria-label="Cancel"
+          >
+            <Icon name="close" size={18} sw={2.2} color={t.textMute} />
+          </button>
         )}
       </div>
-      <ul className="mt-2 max-h-64 overflow-y-auto">
-        {busy && <li className="px-2 py-1 text-xs opacity-50">searching…</li>}
+      <ul style={{ marginTop: 8, maxHeight: 256, overflowY: 'auto', listStyle: 'none', padding: 0 }}>
+        {busy && (
+          <li
+            style={{
+              padding: '6px 8px',
+              fontFamily: FONT_UI,
+              fontSize: 12,
+              color: t.textFaint,
+            }}
+          >
+            searching…
+          </li>
+        )}
         {!busy && results.length === 0 && (
-          <li className="px-2 py-1 text-xs opacity-50">No matches. Try a simpler word.</li>
+          <li
+            style={{
+              padding: '6px 8px',
+              fontFamily: FONT_UI,
+              fontSize: 12,
+              color: t.textFaint,
+            }}
+          >
+            No matches. Try a simpler word.
+          </li>
         )}
         {results.map((r) => (
           <li key={r.id}>
             <button
               type="button"
               onClick={() => onSelect(r)}
-              className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-black/5 dark:hover:bg-white/5"
+              style={{
+                display: 'flex',
+                width: '100%',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '8px 10px',
+                borderRadius: 8,
+                textAlign: 'left',
+                color: t.text,
+                fontFamily: FONT_UI,
+                fontSize: 13.5,
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = t.surfaceHi)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             >
               <span>{r.display_name}</span>
-              <span className="text-[10px] opacity-50">{r.category} · {r.quality_tier}</span>
+              <span style={{ fontFamily: FONT_MONO, fontSize: 10, color: t.textFaint }}>
+                {r.category} · {r.quality_tier}
+              </span>
             </button>
           </li>
         ))}

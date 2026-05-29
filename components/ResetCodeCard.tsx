@@ -1,17 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { useT } from './design/ThemeProvider'
+import { Button, Card, SectionLabel } from './design/primitives'
+import { FONT_DISPLAY, FONT_UI } from './design/theme'
 
-/**
- * "Reset & reveal login code" — shown on the profile page for every user.
- *
- * Because codes are stored as a one-way hash, the system can never show you the
- * current one. Instead we mint a NEW code, store it hashed, and show the
- * plaintext exactly once. The old code is immediately invalid.
- *
- * Typical use: "I got a new phone and forgot to save my code."
- */
 export function ResetCodeCard() {
+  const t = useT()
   type Phase = 'idle' | 'confirming' | 'busy' | 'revealed'
   const [phase, setPhase] = useState<Phase>('idle')
   const [code, setCode] = useState<string | null>(null)
@@ -43,72 +38,122 @@ export function ResetCodeCard() {
       await navigator.clipboard.writeText(code)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
-    } catch { /* clipboard blocked — user can select manually */ }
+    } catch {
+      /* clipboard blocked */
+    }
   }
 
   return (
-    <div className="rounded-lg border border-black/10 bg-black/[0.02] px-4 py-3 dark:border-white/15 dark:bg-white/[0.03]">
-      <h2 className="text-xs font-medium uppercase tracking-wide opacity-60">Login code</h2>
-
-      {phase === 'idle' && (
-        <>
-          <p className="mt-1 text-xs opacity-60">
-            Need your code for a new device? Reset it here — we&apos;ll show the new one once.
-          </p>
-          <button
-            type="button"
-            onClick={() => setPhase('confirming')}
-            className="mt-3 rounded-md border border-black/15 px-3 py-1.5 text-xs dark:border-white/20"
-          >
-            Reset &amp; reveal my code
-          </button>
-        </>
-      )}
-
-      {phase === 'confirming' && (
-        <>
-          <p className="mt-1 text-xs opacity-60">
-            This invalidates your current code immediately. Continue?
-          </p>
-          {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-md bg-foreground px-3 py-1.5 text-xs text-background"
+    <div>
+      <SectionLabel>Login code</SectionLabel>
+      <Card pad={14}>
+        {phase === 'idle' && (
+          <>
+            <p
+              style={{
+                margin: 0,
+                fontFamily: FONT_UI,
+                fontSize: 12.5,
+                color: t.textMute,
+              }}
             >
-              Yes, reset it
-            </button>
-            <button
-              type="button"
-              onClick={() => { setPhase('idle'); setError(null) }}
-              className="rounded-md border border-black/15 px-3 py-1.5 text-xs dark:border-white/20"
+              Need your code for a new device? Reset it here — we&apos;ll show the new one once.
+            </p>
+            <div style={{ marginTop: 12 }}>
+              <Button kind="surface" onClick={() => setPhase('confirming')}>
+                Reset &amp; reveal my code
+              </Button>
+            </div>
+          </>
+        )}
+
+        {phase === 'confirming' && (
+          <>
+            <p
+              style={{
+                margin: 0,
+                fontFamily: FONT_UI,
+                fontSize: 12.5,
+                color: t.textMute,
+              }}
             >
-              Cancel
-            </button>
-          </div>
-        </>
-      )}
+              This invalidates your current code immediately. Continue?
+            </p>
+            {error && (
+              <p
+                style={{
+                  margin: '8px 0 0',
+                  fontFamily: FONT_UI,
+                  fontSize: 12,
+                  color: 'oklch(0.68 0.2 25)',
+                }}
+              >
+                {error}
+              </p>
+            )}
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <Button kind="brand" onClick={reset}>
+                Yes, reset it
+              </Button>
+              <Button
+                kind="surface"
+                onClick={() => {
+                  setPhase('idle')
+                  setError(null)
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        )}
 
-      {phase === 'busy' && (
-        <p className="mt-2 text-xs opacity-50">Generating new code…</p>
-      )}
-
-      {phase === 'revealed' && code && (
-        <>
-          <p className="mt-2 font-mono text-lg font-semibold tracking-widest">{code}</p>
-          <p className="mt-1 text-xs opacity-60">
-            Save this — it&apos;s shown only once. If you lose it again, come back here to reset.
-          </p>
-          <button
-            type="button"
-            onClick={copy}
-            className="mt-2 rounded-md bg-foreground px-3 py-1.5 text-xs text-background"
+        {phase === 'busy' && (
+          <p
+            style={{
+              margin: '8px 0 0',
+              fontFamily: FONT_UI,
+              fontSize: 12.5,
+              color: t.textFaint,
+            }}
           >
-            {copied ? 'Copied ✓' : 'Copy code'}
-          </button>
-        </>
-      )}
+            Generating new code…
+          </p>
+        )}
+
+        {phase === 'revealed' && code && (
+          <>
+            <p
+              style={{
+                margin: '6px 0 0',
+                fontFamily: FONT_DISPLAY,
+                fontWeight: 800,
+                fontSize: 22,
+                color: t.text,
+                letterSpacing: 4,
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {code}
+            </p>
+            <p
+              style={{
+                margin: '6px 0 0',
+                fontFamily: FONT_UI,
+                fontSize: 12.5,
+                color: t.textMute,
+              }}
+            >
+              Save this — it&apos;s shown only once. If you lose it again, come back here to reset.
+            </p>
+            <div style={{ marginTop: 12 }}>
+              <Button kind="brand" onClick={copy} icon={copied ? 'check' : undefined}>
+                {copied ? 'Copied' : 'Copy code'}
+              </Button>
+            </div>
+          </>
+        )}
+      </Card>
     </div>
   )
 }

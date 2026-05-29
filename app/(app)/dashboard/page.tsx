@@ -6,6 +6,7 @@ import { fetchWeekStrip } from '@/lib/scoring/week'
 import { waterTargetMl } from '@/lib/hydration'
 import { fetchCurrentWeekTips } from '@/lib/tips/generate'
 import { signMealImageUrls } from '@/lib/storage/signImages'
+import { fetchLeaderboard } from '@/lib/scoring/leaderboard'
 import { DashboardLive } from '@/components/DashboardLive'
 import type { Meal } from '@/components/MealCard'
 
@@ -24,7 +25,7 @@ export default async function DashboardPage() {
 
   const today = userLocalDate(new Date(), user.timezone)
 
-  const [mealsResp, dailyResp, weekDays, waterResp, tips] = await Promise.all([
+  const [mealsResp, dailyResp, weekDays, waterResp, tips, board] = await Promise.all([
     supabase
       .from('meals')
       .select('id, meal_type, eaten_at, processing_status, image_path, score, used_premium_model, metadata, confirmed_foods, macros')
@@ -45,7 +46,17 @@ export default async function DashboardPage() {
       .eq('user_local_date', today)
       .maybeSingle(),
     fetchCurrentWeekTips(sess.sub, user.timezone),
+    fetchLeaderboard('daily', user.timezone),
   ])
+
+  // Find the current user's rank in today's leaderboard (1-indexed). If they're
+  // not on the board yet (e.g. fewer than the daily-eligibility meal count),
+  // skip the rank chip — DashboardLive renders a dash placeholder for null.
+  const rankIdx = board.rows.findIndex((r) => r.user_id === sess.sub)
+  const rank =
+    rankIdx >= 0
+      ? { rank: rankIdx + 1, member_count: board.rows.length + board.ineligible_count }
+      : null
 
   const rawMeals = (mealsResp.data ?? []) as Meal[]
   // Batch-sign all of today's meal images in one storage call (vs the old
@@ -87,6 +98,7 @@ export default async function DashboardPage() {
       }}
       tips={tips}
       isAdmin={user.is_admin === true}
+      rank={rank}
     />
   )
 }

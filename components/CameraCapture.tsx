@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from 'react'
 import imageCompression from 'browser-image-compression'
+import { useT } from './design/ThemeProvider'
+import { FONT_MONO, FONT_UI } from './design/theme'
+import { Icon } from './design/Icon'
 
 type Props = {
-  onFile: (file: File) => void
+  onFile: (file: File | null) => void
   disabled?: boolean
 }
 
 const COMPRESS_OPTS = {
-  maxSizeMB: 0.2,           // ~200 KB target after compression
+  maxSizeMB: 0.2,
   maxWidthOrHeight: 1280,
   useWebWorker: true,
   fileType: 'image/jpeg' as const,
@@ -17,13 +20,12 @@ const COMPRESS_OPTS = {
 }
 
 /**
- * Two separate file inputs so the user can choose:
- *   - Camera button: file input with capture="environment" → opens camera directly.
- *   - Gallery button: plain file input → opens the photo library / file picker.
- * iOS Safari treats `capture` as a hard constraint and will hide the gallery,
- * so a single input can't offer both. Two inputs is the cleanest workaround.
+ * Capture surface styled like the design's full-bleed viewfinder. The two
+ * separate inputs (camera vs gallery) keep iOS Safari from collapsing the
+ * picker into one mode.
  */
 export function CameraCapture({ onFile, disabled }: Props) {
+  const t = useT()
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
@@ -34,15 +36,10 @@ export function CameraCapture({ onFile, disabled }: Props) {
 
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
-  // Compress + emit. Shared between file-input change handlers AND drag-drop.
   async function processFile(raw: File): Promise<void> {
     setBusy(true)
     setError(null)
     try {
-      // Skip compression when the source is already small + JPEG-ish — the
-      // browser-image-compression library re-encodes everything via canvas,
-      // which can take 1-3s on a phone even for a 200 KB file. Bypass when
-      // we'd save almost nothing.
       const SKIP_BELOW_BYTES = 250 * 1024
       const isCompressedType = raw.type === 'image/jpeg' || raw.type === 'image/webp'
       const dimsRaw = await imageDims(URL.createObjectURL(raw)).catch(() => null)
@@ -67,21 +64,16 @@ export function CameraCapture({ onFile, disabled }: Props) {
     const raw = e.target.files?.[0]
     if (!raw) return
     await processFile(raw)
-    // Reset the input so picking the same file twice in a row still fires onChange.
     if (e.target) e.target.value = ''
   }
 
-  // Drag-drop handlers. We accept a single image file dropped anywhere on the
-  // dropzone. Multiple files → take the first image. Non-images are ignored
-  // with a friendly error rather than silently swallowed.
   function onDragOver(e: React.DragEvent) {
     if (disabled || busy) return
     if (!Array.from(e.dataTransfer.types).includes('Files')) return
-    e.preventDefault() // required so drop fires
+    e.preventDefault()
     setDragHot(true)
   }
   function onDragLeave(e: React.DragEvent) {
-    // Only un-hot when leaving the dropzone itself, not when entering a child.
     if (e.currentTarget === e.target) setDragHot(false)
   }
   async function onDrop(e: React.DragEvent) {
@@ -98,13 +90,13 @@ export function CameraCapture({ onFile, disabled }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div>
       <input
         ref={cameraRef}
         type="file"
         accept="image/*"
         capture="environment"
-        className="hidden"
+        style={{ display: 'none' }}
         onChange={handleInput}
         disabled={disabled || busy}
       />
@@ -112,58 +104,198 @@ export function CameraCapture({ onFile, disabled }: Props) {
         ref={galleryRef}
         type="file"
         accept="image/*"
-        className="hidden"
+        style={{ display: 'none' }}
         onChange={handleInput}
         disabled={disabled || busy}
       />
 
-      {preview ? (
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          className={`overflow-hidden rounded-lg border transition ${dragHot ? 'border-foreground ring-2 ring-foreground/30' : 'border-black/10 dark:border-white/10'}`}
-        >
-          <img src={preview} alt="meal" className="block aspect-square w-full object-cover" />
-        </div>
-      ) : (
-        <div
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          className={`grid aspect-square w-full place-items-center rounded-lg border-2 border-dashed text-center text-sm transition ${dragHot ? 'border-foreground bg-foreground/5 opacity-100' : 'border-black/20 opacity-60 dark:border-white/20'}`}
-        >
-          {busy ? 'Compressing…' : dragHot ? 'Drop to add' : (
-            <span>
-              Drop a photo here<br />
-              <span className="opacity-70">or pick below</span>
-            </span>
-          )}
-        </div>
-      )}
+      {/* Viewfinder */}
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => !preview && !busy && cameraRef.current?.click()}
+        style={{
+          position: 'relative',
+          aspectRatio: '1 / 1',
+          width: '100%',
+          borderRadius: 26,
+          overflow: 'hidden',
+          background: t.dark ? '#0E1110' : '#1A1D1B',
+          border: `1px solid ${dragHot ? t.brand : t.border}`,
+          boxShadow: dragHot ? `0 0 0 4px ${t.brandGlow}` : 'none',
+          cursor: preview || busy ? 'default' : 'pointer',
+          transition: 'box-shadow .15s ease, border-color .15s ease',
+        }}
+      >
+        {preview ? (
+          <img
+            src={preview}
+            alt="meal"
+            style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        ) : (
+          <div
+            aria-hidden
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background:
+                'repeating-linear-gradient(135deg, oklch(0.32 0.04 140) 0 12px, oklch(0.28 0.04 140) 12px 24px)',
+              opacity: 0.6,
+            }}
+          />
+        )}
+        {!preview && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.25)' }} />}
 
-      <div className="grid grid-cols-2 gap-2">
+        {/* Corner brackets */}
+        {!preview &&
+          (
+            [
+              [0, 0],
+              [1, 0],
+              [0, 1],
+              [1, 1],
+            ] as Array<[0 | 1, 0 | 1]>
+          ).map(([x, y], i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                width: 34,
+                height: 34,
+                ...(y ? { bottom: 24 } : { top: 24 }),
+                ...(x ? { right: 24 } : { left: 24 }),
+                borderTop: y ? 'none' : '3px solid #fff',
+                borderBottom: y ? '3px solid #fff' : 'none',
+                borderLeft: x ? 'none' : '3px solid #fff',
+                borderRight: x ? '3px solid #fff' : 'none',
+                borderRadius: 4,
+                opacity: 0.9,
+                pointerEvents: 'none',
+              }}
+            />
+          ))}
+
+        {/* Hint */}
+        {!preview && (
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              bottom: 22,
+              textAlign: 'center',
+              color: 'rgba(255,255,255,0.9)',
+              fontFamily: FONT_UI,
+              fontSize: 13,
+            }}
+          >
+            <Icon
+              name="camera"
+              size={20}
+              sw={2}
+              color="#fff"
+              style={{ margin: '0 auto 6px' }}
+            />
+            <div>{busy ? 'Compressing…' : dragHot ? 'Drop to add' : 'Tap to capture, or drop a photo'}</div>
+          </div>
+        )}
+      </div>
+
+      {/* Shutter row */}
+      <div
+        style={{
+          marginTop: 16,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 18px',
+        }}
+      >
+        <CircBtn icon="gallery" label="Gallery" onClick={() => galleryRef.current?.click()} disabled={disabled || busy} />
         <button
           type="button"
           onClick={() => cameraRef.current?.click()}
           disabled={disabled || busy}
-          className="rounded-md border border-black/15 px-3 py-2 text-sm hover:bg-black/5 disabled:opacity-40 dark:border-white/20 dark:hover:bg-white/5"
+          style={{
+            width: 76,
+            height: 76,
+            borderRadius: '50%',
+            border: '4px solid rgba(255,255,255,0.3)',
+            background: 'transparent',
+            cursor: disabled || busy ? 'default' : 'pointer',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 4,
+            opacity: disabled || busy ? 0.4 : 1,
+          }}
+          aria-label="Take photo"
         >
-          📷 Take photo
+          <div style={{ width: '100%', height: '100%', borderRadius: '50%', background: '#fff' }} />
         </button>
-        <button
-          type="button"
-          onClick={() => galleryRef.current?.click()}
-          disabled={disabled || busy}
-          className="rounded-md border border-black/15 px-3 py-2 text-sm hover:bg-black/5 disabled:opacity-40 dark:border-white/20 dark:hover:bg-white/5"
-        >
-          🖼 Choose from gallery
-        </button>
+        <CircBtn
+          icon="close"
+          label="Clear"
+          onClick={() => {
+            setPreview(null)
+            setInfo(null)
+            onFile(null)
+          }}
+          disabled={!preview || busy}
+        />
       </div>
 
-      {info && <p className="text-xs opacity-60">{info.kb} KB · {info.w}×{info.h}{preview ? ' · tap a button above to replace' : ''}</p>}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {/* Status */}
+      {(info || error) && (
+        <div style={{ marginTop: 10, textAlign: 'center' }}>
+          {info && (
+            <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: t.textFaint }}>
+              {info.kb} KB · {info.w}×{info.h}
+            </span>
+          )}
+          {error && (
+            <span style={{ fontFamily: FONT_UI, fontSize: 12, color: 'oklch(0.68 0.2 25)' }}>{error}</span>
+          )}
+        </div>
+      )}
     </div>
+  )
+}
+
+function CircBtn({
+  icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: 'gallery' | 'close' | 'flash' | 'user'
+  label: string
+  onClick: () => void
+  disabled?: boolean
+}) {
+  const t = useT()
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: '50%',
+        background: t.dark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.18)',
+        border: 'none',
+        cursor: disabled ? 'default' : 'pointer',
+        display: 'grid',
+        placeItems: 'center',
+        opacity: disabled ? 0.35 : 1,
+        backdropFilter: 'blur(8px)',
+      }}
+    >
+      <Icon name={icon} size={20} sw={2.2} color="#fff" />
+    </button>
   )
 }
 

@@ -6,18 +6,40 @@ import { useRouter } from 'next/navigation'
 import { ConfirmFoodChips, type DraftItem } from '@/components/ConfirmFoodChips'
 import { ScoreBreakdown } from '@/components/ScoreBreakdown'
 import { FlagScoreButton } from '@/components/FlagScoreButton'
+import { useT } from '@/components/design/ThemeProvider'
+import { Button, Card } from '@/components/design/primitives'
+import { FONT_UI } from '@/components/design/theme'
 
 type Macros = {
-  protein_g: number; carbs_g: number; fat_g: number; fiber_g: number
-  sat_fat_g: number; sugar_g: number; sodium_mg: number; kcal: number
+  protein_g: number
+  carbs_g: number
+  fat_g: number
+  fiber_g: number
+  sat_fat_g: number
+  sugar_g: number
+  sodium_mg: number
+  kcal: number
 }
 type Breakdown = {
-  protein: number; fiber: number; quality: number; vegetable: number; fruit: number
-  sugar: number; sat_fat: number; sodium: number; raw: number; final: number
+  protein: number
+  fiber: number
+  quality: number
+  vegetable: number
+  fruit: number
+  sugar: number
+  sat_fat: number
+  sodium: number
+  raw: number
+  final: number
 }
 type Daily = {
-  nutrition: number; goal_alignment: number; meal_timing: number; hydration: number
-  consistency: number; total_score: number; meal_count: number
+  nutrition: number
+  goal_alignment: number
+  meal_timing: number
+  hydration: number
+  consistency: number
+  total_score: number
+  meal_count: number
 }
 type ConfirmResponse = { score: number; breakdown: Breakdown; macros: Macros; daily: Daily }
 
@@ -30,6 +52,7 @@ type Props = {
 const DRAFT_KEY = (mealId: string) => `fhr:confirm:${mealId}`
 
 export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
+  const t = useT()
   const router = useRouter()
   const [items, setItems] = useState<DraftItem[]>(initial)
   const [busy, setBusy] = useState(false)
@@ -37,10 +60,6 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
   const [result, setResult] = useState<ConfirmResponse | null>(null)
   const hydrated = useRef(false)
 
-  // On mount, prefer a previously-saved draft over the server's initial
-  // suggestions — that way removals + edits survive navigating away and back.
-  // (Server hydration uses `initial`; we flip to draft after first paint to
-  // avoid React hydration mismatch.)
   useEffect(() => {
     if (hydrated.current) return
     hydrated.current = true
@@ -49,24 +68,29 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
       if (!raw) return
       const parsed = JSON.parse(raw) as DraftItem[]
       if (Array.isArray(parsed)) setItems(parsed)
-    } catch { /* ignore corrupt drafts */ }
+    } catch {
+      /* ignore corrupt drafts */
+    }
   }, [mealId])
 
-  // Save the draft on every change so refresh / nav doesn't lose work.
   useEffect(() => {
     if (!hydrated.current) return
-    try { localStorage.setItem(DRAFT_KEY(mealId), JSON.stringify(items)) } catch {}
+    try {
+      localStorage.setItem(DRAFT_KEY(mealId), JSON.stringify(items))
+    } catch {
+      /* storage blocked */
+    }
   }, [mealId, items])
 
   function discardDraftAndReset() {
-    try { localStorage.removeItem(DRAFT_KEY(mealId)) } catch {}
+    try {
+      localStorage.removeItem(DRAFT_KEY(mealId))
+    } catch {
+      /* storage blocked */
+    }
     setItems(initial)
   }
 
-  // With LLM-first scoring, every item is score-able — taxonomy match uses
-  // curated macros, LLM-estimate uses the LLM's per-100g values. The only
-  // un-submittable case is a legacy row whose LLM-estimate item lacks macros
-  // (uploaded before this refactor) — we mark those as "needs swap".
   const needsSwap = items.filter((i) => !i.food_id && !i.llm_macros_per_100g).length
   const canSubmit = items.length > 0 && needsSwap === 0 && !busy
   const aiEstimateCount = items.filter((i) => !i.food_id && i.llm_macros_per_100g).length
@@ -84,7 +108,6 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
               portion_g: i.portion.grams,
             }
           }
-          // LLM-estimate items carry their own macros + classification.
           return {
             food_id: null as null,
             display_name: i.display_name,
@@ -106,8 +129,11 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
         setError(typeof json.error === 'string' ? json.error : 'Could not score this meal.')
         return
       }
-      // Drop the local draft — confirmed_foods is now persisted server-side.
-      try { localStorage.removeItem(DRAFT_KEY(mealId)) } catch {}
+      try {
+        localStorage.removeItem(DRAFT_KEY(mealId))
+      } catch {
+        /* storage blocked */
+      }
       setResult(json as ConfirmResponse)
       router.refresh()
     } finally {
@@ -116,8 +142,6 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
   }
 
   if (result) {
-    // Pass through the foods the user just confirmed so they can see what was scored,
-    // not just an opaque number. The items state is intact post-submit (we never mutate it).
     const scoredFoods = items
       .filter((i) => i.food_id !== null)
       .map((i) => ({
@@ -126,15 +150,19 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
         portion_g: i.portion.grams,
       }))
     return (
-      <div className="space-y-5">
+      <div>
         <ScoreBreakdown {...result} foods={scoredFoods} />
         <FlagScoreButton mealId={mealId} />
-        <div className="flex gap-2">
-          <Link href="/dashboard" className="flex-1 rounded-md bg-foreground py-2 text-center text-sm text-background">
-            Back to dashboard
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <Link href="/dashboard" style={{ flex: 1, textDecoration: 'none' }}>
+            <Button kind="brand" full icon="check">
+              Add to today
+            </Button>
           </Link>
-          <Link href="/leaderboard" className="flex-1 rounded-md border border-black/15 py-2 text-center text-sm dark:border-white/20">
-            See rank
+          <Link href="/leaderboard" style={{ flex: 1, textDecoration: 'none' }}>
+            <Button kind="surface" full icon="rank">
+              See rank
+            </Button>
           </Link>
         </div>
       </div>
@@ -142,54 +170,102 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
   }
 
   return (
-    <div className="space-y-4">
+    <div>
       <ConfirmFoodChips items={items} onChange={setItems} disabled={busy} />
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && (
+        <p
+          style={{
+            marginTop: 12,
+            fontFamily: FONT_UI,
+            fontSize: 13,
+            color: 'oklch(0.68 0.2 25)',
+          }}
+        >
+          {error}
+        </p>
+      )}
 
       {aiEstimateCount > 0 && needsSwap === 0 && (
-        <p className="text-xs opacity-60">
-          {aiEstimateCount} item{aiEstimateCount === 1 ? '' : 's'} scored using AI macro estimates (not in our curated taxonomy). Tap <em>Change food</em> on a row to use a curated entry instead.
+        <p
+          style={{
+            marginTop: 12,
+            fontFamily: FONT_UI,
+            fontSize: 12,
+            color: t.textMute,
+          }}
+        >
+          {aiEstimateCount} item{aiEstimateCount === 1 ? '' : 's'} scored using AI macro
+          estimates. Tap <em>Change food</em> on a row to use a curated entry instead.
         </p>
       )}
 
       {needsSwap > 0 && (
-        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-          <p className="font-medium">
+        <Card
+          pad={12}
+          style={{
+            marginTop: 12,
+            background: 'oklch(0.32 0.12 80 / 0.18)',
+            border: `1px solid oklch(0.65 0.18 80 / 0.4)`,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              fontFamily: FONT_UI,
+              fontWeight: 700,
+              fontSize: 13,
+              color: 'oklch(0.85 0.18 80)',
+            }}
+          >
             {needsSwap} item{needsSwap === 1 ? '' : 's'} need a food picked.
           </p>
-          <p className="mt-0.5 opacity-90">
-            This meal was uploaded before our AI-estimate fallback was added.
-            For each row above, tap <em>Change food</em> to pick from the food list (we’ll pre-fill the search), or tap <em>Remove</em>.
+          <p
+            style={{
+              margin: '4px 0 0',
+              fontFamily: FONT_UI,
+              fontSize: 12,
+              color: t.textMute,
+            }}
+          >
+            This meal was uploaded before our AI-estimate fallback was added. For each row above,
+            tap <em>Change food</em> to pick from the food list, or tap remove.
           </p>
-        </div>
+        </Card>
       )}
 
-      <button
-        type="button"
-        onClick={submit}
-        disabled={!canSubmit}
-        className="w-full rounded-md bg-foreground py-2 text-background disabled:opacity-40"
-      >
-        {busy
-          ? 'Scoring…'
-          : needsSwap > 0
-            ? `Pick a food for ${needsSwap} item${needsSwap === 1 ? '' : 's'}`
-            : alreadyScored
-              ? 'Re-score with these changes'
-              : 'Score this meal'}
-      </button>
+      <div style={{ marginTop: 16 }}>
+        <Button kind="brand" full icon="spark" onClick={submit} disabled={!canSubmit}>
+          {busy
+            ? 'Scoring…'
+            : needsSwap > 0
+              ? `Pick a food for ${needsSwap} item${needsSwap === 1 ? '' : 's'}`
+              : alreadyScored
+                ? 'Re-score with these changes'
+                : 'Score this meal'}
+        </Button>
+      </div>
 
       <button
         type="button"
         onClick={discardDraftAndReset}
-        className="block w-full text-center text-[11px] opacity-50 hover:opacity-80"
+        style={{
+          display: 'block',
+          margin: '10px auto 0',
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          fontFamily: FONT_UI,
+          fontSize: 11.5,
+          color: t.textFaint,
+          padding: 0,
+        }}
       >
-        Reset to the LLM’s original suggestions
+        Reset to the LLM&apos;s original suggestions
       </button>
 
       {alreadyScored && (
-        <div className="border-t border-black/10 pt-3 dark:border-white/10">
+        <div style={{ borderTop: `1px solid ${t.border}`, marginTop: 16, paddingTop: 12 }}>
           <FlagScoreButton mealId={mealId} />
         </div>
       )}
