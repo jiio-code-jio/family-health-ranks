@@ -5,6 +5,7 @@ import { userLocalDate } from '@/lib/tz'
 import { fetchWeekStrip } from '@/lib/scoring/week'
 import { waterTargetMl } from '@/lib/hydration'
 import { fetchCurrentWeekTips } from '@/lib/tips/generate'
+import { signMealImageUrls } from '@/lib/storage/signImages'
 import { DashboardLive } from '@/components/DashboardLive'
 import type { Meal } from '@/components/MealCard'
 
@@ -46,7 +47,15 @@ export default async function DashboardPage() {
     fetchCurrentWeekTips(sess.sub, user.timezone),
   ])
 
-  const meals = (mealsResp.data ?? []) as Meal[]
+  const rawMeals = (mealsResp.data ?? []) as Meal[]
+  // Batch-sign all of today's meal images in one storage call (vs the old
+  // per-card request) and embed the URLs so thumbnails render on first paint.
+  const imageUrls = await signMealImageUrls(rawMeals.map((m) => m.image_path))
+  const meals: Meal[] = rawMeals.map((m) => ({
+    ...m,
+    image_url: m.image_path ? imageUrls.get(m.image_path) ?? null : null,
+  }))
+
   const daily = dailyResp.data
     ? {
         nutrition: Number(dailyResp.data.nutrition),

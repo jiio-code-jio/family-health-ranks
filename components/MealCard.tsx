@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import useSWR, { mutate as swrMutate } from 'swr'
+import { mutate as swrMutate } from 'swr'
 
 export type Meal = {
   id: string
@@ -11,6 +11,8 @@ export type Meal = {
   eaten_at: string
   processing_status: 'pending_identify' | 'awaiting_confirmation' | 'scored' | 'rejected_not_food' | 'failed'
   image_path: string | null
+  /** Signed view URL, batch-signed server-side and embedded in the meals payload. */
+  image_url?: string | null
   score: string | number | null
   used_premium_model?: boolean
   metadata?: string | null
@@ -25,33 +27,14 @@ const STATUS_LABEL: Record<Meal['processing_status'], string> = {
   failed: 'Try again',
 }
 
-// Signed URLs are valid 10 min server-side; we dedupe SWR requests for 5 min so
-// MealCards re-mounted after navigation (dashboard ↔ leaderboard ↔ confirm)
-// read from cache instead of refetching the URL and forcing the browser to
-// re-pull the image.
-const URL_DEDUPE_MS = 5 * 60 * 1000
-
-const fetchImageUrl = async (apiUrl: string): Promise<string | null> => {
-  const r = await fetch(apiUrl)
-  if (!r.ok) return null
-  const j = (await r.json()) as { url?: string }
-  return j.url ?? null
-}
-
 export function MealCard({ meal, ownerView }: { meal: Meal; ownerView: boolean }) {
   const router = useRouter()
   const [deleting, setDeleting] = useState(false)
 
-  const { data: imgUrl } = useSWR(
-    meal.image_path ? `/api/meals/${meal.id}/image-url` : null,
-    fetchImageUrl,
-    {
-      dedupingInterval: URL_DEDUPE_MS,
-      revalidateOnFocus: false,
-      revalidateOnReconnect: false,
-      revalidateIfStale: false,
-    },
-  )
+  // Signed URL is batch-signed server-side and embedded in the meals payload —
+  // no per-card fetch. `image_path` present but `image_url` missing means the
+  // sign failed; we show the loading placeholder rather than a broken image.
+  const imgUrl = meal.image_url ?? null
 
   async function onDelete(e: React.MouseEvent) {
     e.preventDefault()

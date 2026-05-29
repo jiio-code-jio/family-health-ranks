@@ -5,6 +5,7 @@ import { adminClient } from '@/lib/supabase/admin'
 import { getSession } from '@/lib/auth/session'
 import { userLocalDate } from '@/lib/tz'
 import { runIdentificationPipeline } from '@/lib/llm/pipeline'
+import { signMealImageUrls } from '@/lib/storage/signImages'
 import { log } from '@/lib/log'
 
 export const runtime = 'nodejs'
@@ -119,5 +120,15 @@ export async function GET(req: NextRequest) {
     .order('eaten_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ date, meals: data ?? [] })
+
+  // Batch-sign every meal's image in one storage call and embed the URL, so the
+  // client renders thumbnails without a follow-up request per card.
+  const rows = data ?? []
+  const imageUrls = await signMealImageUrls(rows.map((m) => m.image_path))
+  const meals = rows.map((m) => ({
+    ...m,
+    image_url: m.image_path ? imageUrls.get(m.image_path) ?? null : null,
+  }))
+
+  return NextResponse.json({ date, meals })
 }
