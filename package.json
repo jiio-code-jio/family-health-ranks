@@ -7,9 +7,6 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed-user": "tsx scripts/seed-user.ts",
-    "seed-taxonomy": "tsx scripts/seed-taxonomy.ts",
-    "test-resolver": "tsx scripts/test-resolver.ts",
     "tail-logs": "tail -f logs/app.log"
   },
   "dependencies": {
@@ -20,6 +17,7 @@
     "browser-image-compression": "^2.0.2",
     "date-fns": "^4.3.0",
     "date-fns-tz": "^3.2.0",
+    "google-auth-library": "^10.7.0",
     "jose": "^6.2.3",
     "next": "16.2.6",
     "openai": "^6.39.0",

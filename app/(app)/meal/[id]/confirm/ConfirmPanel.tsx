@@ -7,7 +7,7 @@ import { ConfirmFoodChips, type DraftItem } from '@/components/ConfirmFoodChips'
 import { ScoreBreakdown } from '@/components/ScoreBreakdown'
 import { FlagScoreButton } from '@/components/FlagScoreButton'
 import { useT } from '@/components/design/ThemeProvider'
-import { Button, Card } from '@/components/design/primitives'
+import { Button } from '@/components/design/primitives'
 import { FONT_UI } from '@/components/design/theme'
 
 type Macros = {
@@ -91,33 +91,21 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
     setItems(initial)
   }
 
-  const needsSwap = items.filter((i) => !i.food_id && !i.llm_macros_per_100g).length
-  const canSubmit = items.length > 0 && needsSwap === 0 && !busy
-  const aiEstimateCount = items.filter((i) => !i.food_id && i.llm_macros_per_100g).length
+  const canSubmit = items.length > 0 && !busy
 
   async function submit() {
     setBusy(true)
     setError(null)
     try {
       const payload = {
-        confirmed_foods: items.map((i) => {
-          if (i.food_id !== null) {
-            return {
-              food_id: i.food_id,
-              portion_size: i.portion.size,
-              portion_g: i.portion.grams,
-            }
-          }
-          return {
-            food_id: null as null,
-            display_name: i.display_name,
-            llm_macros_per_100g: i.llm_macros_per_100g!,
-            llm_category: i.llm_category!,
-            llm_quality: i.llm_quality!,
-            portion_size: i.portion.size,
-            portion_g: i.portion.grams,
-          }
-        }),
+        confirmed_foods: items.map((i) => ({
+          display_name: i.display_name,
+          llm_macros_per_100g: i.llm_macros_per_100g,
+          llm_category: i.llm_category,
+          llm_quality: i.llm_quality,
+          portion_size: i.portion.size,
+          portion_g: i.portion.grams,
+        })),
       }
       const res = await fetch(`/api/meals/${mealId}/confirm`, {
         method: 'POST',
@@ -142,13 +130,11 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
   }
 
   if (result) {
-    const scoredFoods = items
-      .filter((i) => i.food_id !== null)
-      .map((i) => ({
-        display_name: i.display_name,
-        portion_size: i.portion.size,
-        portion_g: i.portion.grams,
-      }))
+    const scoredFoods = items.map((i) => ({
+      display_name: i.display_name,
+      portion_size: i.portion.size,
+      portion_g: i.portion.grams,
+    }))
     return (
       <div>
         <ScoreBreakdown {...result} foods={scoredFoods} />
@@ -186,7 +172,7 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
         </p>
       )}
 
-      {aiEstimateCount > 0 && needsSwap === 0 && (
+      {items.length > 0 && (
         <p
           style={{
             marginTop: 12,
@@ -195,54 +181,18 @@ export function ConfirmPanel({ mealId, initial, alreadyScored }: Props) {
             color: t.textMute,
           }}
         >
-          {aiEstimateCount} item{aiEstimateCount === 1 ? '' : 's'} scored using AI macro
-          estimates. Tap <em>Change food</em> on a row to use a curated entry instead.
+          Macros are estimated by AI from the photo. Adjust portions, remove anything that
+          isn’t there, or add items we missed.
         </p>
-      )}
-
-      {needsSwap > 0 && (
-        <Card
-          pad={12}
-          style={{
-            marginTop: 12,
-            background: 'oklch(0.32 0.12 80 / 0.18)',
-            border: `1px solid oklch(0.65 0.18 80 / 0.4)`,
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              fontFamily: FONT_UI,
-              fontWeight: 700,
-              fontSize: 13,
-              color: 'oklch(0.85 0.18 80)',
-            }}
-          >
-            {needsSwap} item{needsSwap === 1 ? '' : 's'} need a food picked.
-          </p>
-          <p
-            style={{
-              margin: '4px 0 0',
-              fontFamily: FONT_UI,
-              fontSize: 12,
-              color: t.textMute,
-            }}
-          >
-            This meal was uploaded before our AI-estimate fallback was added. For each row above,
-            tap <em>Change food</em> to pick from the food list, or tap remove.
-          </p>
-        </Card>
       )}
 
       <div style={{ marginTop: 16 }}>
         <Button kind="brand" full icon="spark" onClick={submit} disabled={!canSubmit}>
           {busy
             ? 'Scoring…'
-            : needsSwap > 0
-              ? `Pick a food for ${needsSwap} item${needsSwap === 1 ? '' : 's'}`
-              : alreadyScored
-                ? 'Re-score with these changes'
-                : 'Score this meal'}
+            : alreadyScored
+              ? 'Re-score with these changes'
+              : 'Score this meal'}
         </Button>
       </div>
 

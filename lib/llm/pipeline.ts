@@ -1,46 +1,35 @@
 /**
  * The full identification pipeline for one meal.
  *
- * Stage 1   — Gemini 2.5 Flash vision → open-ended {is_food, items, confidence, notes}
- * Stage 1.5 — Taxonomy resolver maps each free-text description to a food_id
- *             (vector search + optional disambig LLM)
- * Stage 2   — If confidence too low OR ≥2 items came back unmatched,
- *             re-run Stage 1 with GPT-4.1 mini (when configured) and re-resolve.
- * Persist   — Write llm_suggested_foods + overall_confidence + used_premium_model,
- *             flip processing_status to 'awaiting_confirmation' (or 'rejected_not_food').
+ * Stage 1 — Gemini 2.5 Flash vision → open-ended {is_food, items, confidence, notes}.
+ *           Each item already carries its own estimated_per_100g + category +
+ *           quality_tier, so the meal is fully score-able from this alone.
+ * Stage 2 — If overall confidence is low OR any single item is low-confidence,
+ *           re-run Stage 1 with GPT-4.1 mini (when configured) for a sharper read.
+ * Persist — Write llm_suggested_foods + overall_confidence + used_premium_model,
+ *           flip processing_status to 'awaiting_confirmation' (or 'rejected_not_food').
  *
- * Scoring (Stage 3) is NOT here — that runs only when the user confirms the
- * foods in the UI (Phase 6).
+ * There is no taxonomy lookup anymore — the model is the single source of truth
+ * for both identification and macros. Scoring (Stage 3) runs only when the user
+ * confirms the foods in the UI.
  */
 
 import { adminClient } from '@/lib/supabase/admin'
-import { resolveDescription, type Resolution } from '@/lib/taxonomy/resolver'
-import { searchByText } from '@/lib/taxonomy/loader'
 import { identifyWithGemini, type IdentificationResult, type IdentifiedItem, type Per100g, type FoodCategory, type FoodQuality } from './identify'
 import { identifyWithOpenAI, openaiConfigured } from './openai'
 import { log } from '@/lib/log'
 
 const ESCALATE_OVERALL_CONFIDENCE = 0.65
 const ESCALATE_ITEM_CONFIDENCE = 0.5
-const ESCALATE_UNMATCHED_COUNT = 2
 
 /**
  * Suggestion shape persisted to meals.llm_suggested_foods. Every item is
- * SCORE-ABLE — either via taxonomy lookup (resolved_food_id present) or via the
- * LLM's own macro estimate (estimated_per_100g + llm_category + llm_quality).
- *
- * This is the architectural shift from "force user to pick from taxonomy" to
- * "LLM identifies, taxonomy refines when available, user just tweaks".
+ * score-able directly from the model's own macro estimate — there is no
+ * taxonomy match to fall back to.
  */
 export type ResolvedSuggestion = {
   description: string
   portion: 'small' | 'medium' | 'large'
-  resolved_food_id: string | null
-  resolution: 'auto' | 'llm_disambig' | 'llm_estimate'
-  candidates: Array<{ food_id: string; display_name: string; similarity: number }>
-  // LLM fallback fields — always present so the meal is score-able without
-  // a taxonomy match. For resolved items these are kept for reference but
-  // the taxonomy values are used at score time.
   estimated_per_100g: Per100g
   llm_category: FoodCategory
   llm_quality: FoodQuality
@@ -105,17 +94,10 @@ export async function runIdentificationPipeline(mealId: string): Promise<void> {
       meal_id: mealId, items: stage1.items.length, confidence: stage1.overall_confidence, premium: stage1FromPremium,
     })
 
-    // 3. Stage 1.5 — resolve each item against the taxonomy
-    let resolved = await resolveAll(stage1.items)
-
-    // 4. Decide whether to escalate
+    // 3. Decide whether to escalate to the premium model for a sharper read.
     const lowOverall = stage1.overall_confidence < ESCALATE_OVERALL_CONFIDENCE
     const anyLowItem = stage1.items.some((i) => i.confidence < ESCALATE_ITEM_CONFIDENCE)
-    // "Needs help" now means LLM-estimate fallback (no taxonomy match). If
-    // several items couldn't be matched we still escalate to the premium
-    // model, which may identify them more precisely.
-    const unmatchedCount = resolved.filter((r) => r.resolution === 'llm_estimate').length
-    const wantEscalate = lowOverall || anyLowItem || unmatchedCount >= ESCALATE_UNMATCHED_COUNT
+    const wantEscalate = lowOverall || anyLowItem
     const canEscalate = openaiConfigured()
 
     let usedPremium = stage1FromPremium
@@ -123,7 +105,7 @@ export async function runIdentificationPipeline(mealId: string): Promise<void> {
 
     if (!stage1FromPremium && wantEscalate && canEscalate) {
       log.info('pipeline.escalate', 'low confidence, retrying with openai', {
-        meal_id: mealId, low_overall: lowOverall, any_low_item: anyLowItem, unmatched: unmatchedCount,
+        meal_id: mealId, low_overall: lowOverall, any_low_item: anyLowItem,
       })
       try {
         const stage2 = await identifyWithOpenAI(base64, mimeType)
@@ -138,7 +120,6 @@ export async function runIdentificationPipeline(mealId: string): Promise<void> {
           return
         }
         final = stage2
-        resolved = await resolveAll(stage2.items)
         usedPremium = true
       } catch (err) {
         // Premium failed — keep Gemini's result rather than fail the whole meal.
@@ -146,7 +127,8 @@ export async function runIdentificationPipeline(mealId: string): Promise<void> {
       }
     }
 
-    // 5. Persist + flip status
+    // 4. Persist + flip status
+    const resolved = toSuggestions(final.items)
     await supabase.from('meals').update({
       llm_suggested_foods: resolved,
       overall_confidence: final.overall_confidence,
@@ -154,56 +136,21 @@ export async function runIdentificationPipeline(mealId: string): Promise<void> {
       processing_status: 'awaiting_confirmation',
     }).eq('id', mealId)
     log.info('pipeline.done', 'awaiting_confirmation', {
-      meal_id: mealId, ms: Date.now() - t0, premium: usedPremium,
-      resolved: resolved.filter((r) => r.resolved_food_id).length,
-      unmatched: resolved.filter((r) => !r.resolved_food_id).length,
+      meal_id: mealId, ms: Date.now() - t0, premium: usedPremium, items: resolved.length,
     })
   } catch (err) {
     await markFailed(mealId, `unexpected: ${msgOf(err)}`)
   }
 }
 
-async function resolveAll(items: IdentificationResult['items']): Promise<ResolvedSuggestion[]> {
-  // Run resolver calls in parallel — resolver does its own DB + Gemini calls.
-  return Promise.all(items.map(async (item) => {
-    const llmFields = {
-      estimated_per_100g: item.estimated_per_100g,
-      llm_category: item.category,
-      llm_quality: item.quality_tier,
-    }
-
-    let r: Resolution
-    try {
-      r = await resolveDescription(item.description)
-    } catch (err) {
-      // Embed / vector search failed (typically Gemini 503). With LLM-first
-      // scoring this is fine — we still have the LLM's macros and quality
-      // tier, so the meal scores correctly without a taxonomy match. Show
-      // text-search candidates as suggestions in case the user wants to
-      // swap to a taxonomy item.
-      log.warn('pipeline.resolve', 'resolver failed, using llm estimate', {
-        description: item.description, error: msgOf(err),
-      })
-      const fallback = await searchByText(item.description, 5).catch(() => [])
-      return {
-        description: item.description,
-        portion: item.suggested_portion,
-        resolved_food_id: null,
-        resolution: 'llm_estimate' as const,
-        candidates: fallback,
-        ...llmFields,
-      }
-    }
-    // Same fallback for legitimate vector-search misses — but we tag them as
-    // llm_estimate so the UI knows to trust the LLM's macros for scoring.
-    return {
-      description: item.description,
-      portion: item.suggested_portion,
-      resolved_food_id: r.kind === 'unmatched' ? null : r.food_id,
-      resolution: r.kind === 'unmatched' ? 'llm_estimate' : r.kind,
-      candidates: r.candidates,
-      ...llmFields,
-    }
+/** Map the model's identified items into the persisted suggestion shape. */
+function toSuggestions(items: IdentifiedItem[]): ResolvedSuggestion[] {
+  return items.map((item) => ({
+    description: item.description,
+    portion: item.suggested_portion,
+    estimated_per_100g: item.estimated_per_100g,
+    llm_category: item.category,
+    llm_quality: item.quality_tier,
   }))
 }
 

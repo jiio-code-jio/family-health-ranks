@@ -6,7 +6,6 @@ import { DailyScoreCard } from './DailyScoreCard'
 import { WeekStrip, type DayCell } from './WeekStrip'
 import { WaterTracker } from './WaterTracker'
 import { TipsCard, type WeeklyTips } from './TipsCard'
-import { InviteCard } from './InviteCard'
 import { useT, useThemeCtl } from './design/ThemeProvider'
 import { FONT_DISPLAY, FONT_UI, FONT_MONO } from './design/theme'
 import { Icon } from './design/Icon'
@@ -32,7 +31,6 @@ type Props = {
   weekDays: DayCell[]
   water: { date: string; ml: number; target_ml: number }
   tips: WeeklyTips | null
-  isAdmin: boolean
   rank?: { rank: number; member_count: number } | null
 }
 
@@ -72,7 +70,6 @@ export function DashboardLive({
   weekDays,
   water,
   tips,
-  isAdmin,
   rank,
 }: Props) {
   const t = useT()
@@ -313,12 +310,6 @@ export function DashboardLive({
           </Link>
         </div>
       </div>
-
-      {isAdmin && (
-        <div style={{ marginTop: 24 }}>
-          <InviteCard />
-        </div>
-      )}
     </section>
   )
 }

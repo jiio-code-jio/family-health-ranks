@@ -1,9 +1,8 @@
 /**
  * Stage 1 of the identification pipeline: ask Gemini 2.5 Flash to describe
- * the foods on the plate, freely. We deliberately DO NOT constrain the model
- * to taxonomy food_ids here — that's what the resolver does. Cramming 80+
- * enum values into a structured-output schema would degrade Gemini's
- * extraction accuracy.
+ * the foods on the plate and estimate their macros, freely. The model is the
+ * single source of truth for identification and nutrition — there is no
+ * taxonomy to match against.
  */
 
 import { generateJson } from './gemini'
@@ -31,13 +30,7 @@ export type IdentifiedItem = {
   description: string
   suggested_portion: Portion
   confidence: number
-  /**
-   * LLM's nutrient estimate per 100 g. Used as a FALLBACK when the taxonomy
-   * resolver can't match this item to a curated food_items row. For matched
-   * items we still prefer the taxonomy's macros (more accurate / consistent),
-   * but having the LLM estimate means rare or unknown foods still get scored
-   * without forcing the user to pick from a finite list.
-   */
+  /** The model's nutrient estimate per 100 g — used directly for scoring. */
   estimated_per_100g: Per100g
   category: FoodCategory
   quality_tier: FoodQuality

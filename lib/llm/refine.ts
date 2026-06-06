@@ -1,17 +1,15 @@
 /**
  * Premium re-score for the "this score looks wrong" feedback button.
  *
- * Re-runs the meal photo through the premium model (GPT-4.1 mini), maps each
- * identified item to the taxonomy (or keeps the LLM estimate), AUTO-adopts those
- * as the new confirmed_foods, and re-scores deterministically. The user doesn't
- * have to re-confirm — that's the whole point of the auto path. They can still
- * open the confirm screen afterwards to hand-tune.
+ * Re-runs the meal photo through the premium model (GPT-4.1 mini), AUTO-adopts
+ * the model's identified items (with their own macro estimates) as the new
+ * confirmed_foods, and re-scores deterministically. The user doesn't have to
+ * re-confirm — that's the whole point of the auto path. They can still open the
+ * confirm screen afterwards to hand-tune.
  */
 
 import { adminClient } from '@/lib/supabase/admin'
 import { identifyWithOpenAI, openaiConfigured } from './openai'
-import { resolveDescription } from '@/lib/taxonomy/resolver'
-import { foodsById } from '@/lib/taxonomy/loader'
 import { aggregateMacros, type ConfirmedFood } from '@/lib/taxonomy/macros'
 import { computeMealScore } from '@/lib/scoring/meal'
 import { recomputeDaily } from '@/lib/scoring/aggregate'
@@ -47,40 +45,15 @@ export async function rescoreMealWithPremium(mealId: string): Promise<RescoreRes
   if (!result.is_food) return { ok: false, reason: 'not_food' }
   if (result.items.length === 0) return { ok: false, reason: 'no_items' }
 
-  // Resolve each item against the taxonomy in parallel. A resolver failure
-  // (e.g. embedding service hiccup) falls back to the LLM's own estimate.
-  const resolved = await Promise.all(
-    result.items.map(async (item) => {
-      try {
-        const r = await resolveDescription(item.description)
-        return { item, food_id: r.kind === 'unmatched' ? null : r.food_id }
-      } catch {
-        return { item, food_id: null as string | null }
-      }
-    }),
-  )
-
-  // Pull default portions for every matched taxonomy id.
-  const matchedIds = resolved.map((r) => r.food_id).filter((id): id is string => id !== null)
-  const foods = matchedIds.length > 0 ? await foodsById(matchedIds) : []
-  const byId = new Map(foods.map((f) => [f.id, f]))
-
-  const confirmed: ConfirmedFood[] = resolved.map(({ item, food_id }) => {
-    const size = item.suggested_portion
-    if (food_id && byId.has(food_id)) {
-      const defaults = byId.get(food_id)!.default_portion_g
-      return { food_id, portion_size: size, portion_g: defaults[size] ?? FALLBACK_DEFAULTS[size] }
-    }
-    return {
-      food_id: null,
-      display_name: titleCase(item.description),
-      llm_macros_per_100g: item.estimated_per_100g,
-      llm_category: item.category,
-      llm_quality: item.quality_tier,
-      portion_size: size,
-      portion_g: FALLBACK_DEFAULTS[size],
-    }
-  })
+  // Adopt the model's items directly — macros come from its own estimate.
+  const confirmed: ConfirmedFood[] = result.items.map((item) => ({
+    display_name: titleCase(item.description),
+    llm_macros_per_100g: item.estimated_per_100g,
+    llm_category: item.category,
+    llm_quality: item.quality_tier,
+    portion_size: item.suggested_portion,
+    portion_g: FALLBACK_DEFAULTS[item.suggested_portion],
+  }))
 
   const { macros, items: scoringItems } = await aggregateMacros(confirmed)
   const { score, breakdown } = computeMealScore(macros, scoringItems)

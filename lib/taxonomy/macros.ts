@@ -1,24 +1,11 @@
-import { foodsById, type CachedFood, type Per100g, type Category, type QualityTier } from './loader'
-
-export type ConfirmedFood =
-  | TaxonomyConfirmedFood
-  | LlmEstimateConfirmedFood
-
-/** A confirmed item that points at a curated taxonomy row. */
-export type TaxonomyConfirmedFood = {
-  food_id: string
-  portion_size: 'small' | 'medium' | 'large' | 'custom'
-  portion_g: number
-}
+import type { Per100g, Category, QualityTier } from './loader'
 
 /**
- * A confirmed item that the LLM identified but our taxonomy doesn't cover.
- * The LLM's per-100g macros + quality + category are stored on the row itself
- * so re-scoring is deterministic (same input → same output) once we've locked
- * the values in.
+ * A confirmed food item. With the taxonomy removed, every item carries the
+ * model's own per-100g macros + classification, so re-scoring is deterministic
+ * (same input → same output) once the values are locked in at confirm time.
  */
-export type LlmEstimateConfirmedFood = {
-  food_id: null
+export type ConfirmedFood = {
   display_name: string
   llm_macros_per_100g: Per100g
   llm_category: Category
@@ -37,50 +24,28 @@ export type ScoringItem = {
   category: Category
   quality_tier: QualityTier
   portion_g: number
-  source: 'taxonomy' | 'llm_estimate'
 }
 
 /**
- * Sum macros across all confirmed foods, blending taxonomy + LLM-estimate
- * sources. Returns the scoring metadata each item contributes so the scorer
- * doesn't need to refetch the taxonomy.
+ * Sum macros across all confirmed foods (scaled by portion) and return the
+ * scoring metadata each item contributes, so the scorer doesn't need to look
+ * anything up.
  */
 export async function aggregateMacros(
   items: ConfirmedFood[],
 ): Promise<{ macros: Per100g; items: ScoringItem[] }> {
-  const taxonomyIds = items
-    .filter((i): i is TaxonomyConfirmedFood => i.food_id !== null)
-    .map((i) => i.food_id)
-  const foods = taxonomyIds.length > 0 ? await foodsById(taxonomyIds) : []
-  const byId = new Map(foods.map((f) => [f.id, f]))
-
   const macros = { ...EMPTY_MACROS }
   const scoring: ScoringItem[] = []
 
   for (const item of items) {
     const k = item.portion_g / 100
-
-    if (item.food_id !== null) {
-      const food = byId.get(item.food_id)
-      if (!food) continue // silently skip — confirm route should have validated
-      addInto(macros, food.per_100g, k)
-      scoring.push({
-        display_name: food.display_name,
-        category:     food.category,
-        quality_tier: food.quality_tier,
-        portion_g:    item.portion_g,
-        source:       'taxonomy',
-      })
-    } else {
-      addInto(macros, item.llm_macros_per_100g, k)
-      scoring.push({
-        display_name: item.display_name,
-        category:     item.llm_category,
-        quality_tier: item.llm_quality,
-        portion_g:    item.portion_g,
-        source:       'llm_estimate',
-      })
-    }
+    addInto(macros, item.llm_macros_per_100g, k)
+    scoring.push({
+      display_name: item.display_name,
+      category:     item.llm_category,
+      quality_tier: item.llm_quality,
+      portion_g:    item.portion_g,
+    })
   }
 
   return { macros: round(macros), items: scoring }
@@ -113,6 +78,3 @@ function round(m: Per100g): Per100g {
 function round1(n: number): number {
   return Math.round(n * 10) / 10
 }
-
-// Re-export CachedFood so existing imports keep working.
-export type { CachedFood }

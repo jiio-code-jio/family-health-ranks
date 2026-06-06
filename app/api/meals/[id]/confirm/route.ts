@@ -5,7 +5,6 @@ import { getSession } from '@/lib/auth/session'
 import { aggregateMacros, type ConfirmedFood } from '@/lib/taxonomy/macros'
 import { computeMealScore } from '@/lib/scoring/meal'
 import { recomputeDaily } from '@/lib/scoring/aggregate'
-import { foodsById } from '@/lib/taxonomy/loader'
 import { log } from '@/lib/log'
 
 export const runtime = 'nodejs'
@@ -25,24 +24,15 @@ const Category = z.enum(['grain', 'protein', 'vegetable', 'fruit', 'dairy', 'sna
 const Quality  = z.enum(['whole_foods', 'mixed', 'processed', 'ultra_processed'])
 const PortionSize = z.enum(['small', 'medium', 'large', 'custom'])
 
-// Discriminated union: either a taxonomy reference (food_id) or an LLM-estimate
-// blob carrying its own macros + classification.
-const ConfirmedFoodSchema = z.union([
-  z.object({
-    food_id: z.string().min(1).max(64),
-    portion_size: PortionSize,
-    portion_g: z.number().positive().max(2000),
-  }),
-  z.object({
-    food_id: z.null(),
-    display_name: z.string().min(1).max(120),
-    llm_macros_per_100g: Per100g,
-    llm_category: Category,
-    llm_quality: Quality,
-    portion_size: PortionSize,
-    portion_g: z.number().positive().max(2000),
-  }),
-])
+// Every confirmed item carries the model's own macros + classification.
+const ConfirmedFoodSchema = z.object({
+  display_name: z.string().min(1).max(120),
+  llm_macros_per_100g: Per100g,
+  llm_category: Category,
+  llm_quality: Quality,
+  portion_size: PortionSize,
+  portion_g: z.number().positive().max(2000),
+})
 
 const Body = z.object({
   confirmed_foods: z.array(ConfirmedFoodSchema).min(1).max(20),
@@ -73,18 +63,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
 
   if (meal.processing_status !== 'awaiting_confirmation' && meal.processing_status !== 'scored') {
     return NextResponse.json({ error: `not_confirmable: status=${meal.processing_status}` }, { status: 409 })
-  }
-
-  // Validate every taxonomy food_id actually exists. (LLM-estimate items carry
-  // their own data, no taxonomy lookup needed.)
-  const taxonomyIds = body.confirmed_foods
-    .filter((f): f is { food_id: string; portion_size: 'small' | 'medium' | 'large' | 'custom'; portion_g: number } => f.food_id !== null)
-    .map((f) => f.food_id)
-  if (taxonomyIds.length > 0) {
-    const found = await foodsById(taxonomyIds)
-    if (found.length !== new Set(taxonomyIds).size) {
-      return NextResponse.json({ error: 'unknown_food_id' }, { status: 400 })
-    }
   }
 
   const confirmed = body.confirmed_foods as ConfirmedFood[]
@@ -118,7 +96,6 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     meal_id: mealId,
     score,
     items: confirmed.length,
-    llm_estimate_items: scoringItems.filter((i) => i.source === 'llm_estimate').length,
     daily_total: daily.total_score,
   })
   return NextResponse.json({ score, breakdown, macros, daily })

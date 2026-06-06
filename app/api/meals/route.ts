@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
 
   // Fire-and-forget identification. waitUntil keeps the serverless function
   // alive after the response is sent (up to the function timeout) so the
-  // Gemini + resolver work finishes without blocking upload latency.
+  // Gemini identification work finishes without blocking upload latency.
   waitUntil(runIdentificationPipeline(mealId))
   log.info('meals.create', 'pipeline fired', { meal_id: mealId })
 

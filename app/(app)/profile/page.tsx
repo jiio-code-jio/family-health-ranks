@@ -1,7 +1,6 @@
 import { adminClient } from '@/lib/supabase/admin'
 import { getSession } from '@/lib/auth/session'
 import { ProfileForm } from '@/components/ProfileForm'
-import { ResetCodeCard } from '@/components/ResetCodeCard'
 import { ProfileHeader } from '@/components/ProfileHeader'
 import { fetchWeekStrip } from '@/lib/scoring/week'
 import { fetchLeaderboard } from '@/lib/scoring/leaderboard'
@@ -52,8 +51,6 @@ export default async function ProfilePage() {
 
       <ProfileForm initial={user} />
 
-      <div style={{ height: 16 }} />
-      <ResetCodeCard />
       <div style={{ height: 16 }} />
     </section>
   )

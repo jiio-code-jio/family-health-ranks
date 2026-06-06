@@ -1,11 +1,10 @@
 /**
  * Thin Gemini wrapper around direct REST — the @google/generative-ai SDK
  * (v0.x) only hits v1beta which no longer exposes the current models for
- * many keys. REST gives us model + endpoint + outputDimensionality control.
+ * many keys. REST gives us model + endpoint control.
  *
  * Models in use:
- *   - gemini-embedding-001 (768-dim via MRL truncation)
- *   - gemini-2.5-flash for vision identification + disambig text calls
+ *   - gemini-2.5-flash for vision identification + macro estimation (JSON)
  */
 
 const API = 'https://generativelanguage.googleapis.com/v1beta'
@@ -36,26 +35,6 @@ async function fetchWithRetry(url: string, init: RequestInit, label: string): Pr
     await new Promise((r) => setTimeout(r, delayMs))
   }
   throw new Error(`${label}: exhausted retries (last: ${lastBody})`)
-}
-
-export type EmbedTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' | 'SEMANTIC_SIMILARITY'
-
-export async function embed(text: string, taskType: EmbedTask = 'RETRIEVAL_QUERY'): Promise<number[]> {
-  const res = await fetchWithRetry(
-    `${API}/models/gemini-embedding-001:embedContent?key=${key()}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: { parts: [{ text }] },
-        outputDimensionality: 768,
-        taskType,
-      }),
-    },
-    'gemini embed',
-  )
-  const data = (await res.json()) as { embedding: { values: number[] } }
-  return data.embedding.values
 }
 
 /**
@@ -93,24 +72,4 @@ export async function generateJson<T>(opts: {
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text
   if (!text) throw new Error('gemini returned no text')
   return JSON.parse(text) as T
-}
-
-/** Plain text completion (for the resolver's disambig pick). */
-export async function generateText(prompt: string): Promise<string> {
-  const res = await fetchWithRetry(
-    `${API}/models/gemini-2.5-flash:generateContent?key=${key()}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0 },
-      }),
-    },
-    'gemini text',
-  )
-  const data = (await res.json()) as {
-    candidates: Array<{ content: { parts: Array<{ text: string }> } }>
-  }
-  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? ''
 }

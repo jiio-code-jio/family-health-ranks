@@ -3,8 +3,8 @@
  * server routes — only depends on jose (Web Crypto under the hood), never on
  * node:crypto.
  *
- * For the deterministic participation-code hash (which DOES need node:crypto),
- * see lib/auth/code-hash.ts — keep it out of any module middleware imports.
+ * Identity comes from Google OAuth (see lib/auth/google.ts); these helpers just
+ * mint and verify the fhr_session cookie that represents a logged-in user.
  */
 
 import { SignJWT, jwtVerify } from 'jose'

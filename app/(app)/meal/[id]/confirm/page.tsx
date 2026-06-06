@@ -2,38 +2,27 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSession } from '@/lib/auth/session'
 import { adminClient } from '@/lib/supabase/admin'
-import { foodsById, type CachedFood, type Category, type QualityTier } from '@/lib/taxonomy/loader'
+import type { Per100g, Category, QualityTier } from '@/lib/taxonomy/loader'
 import { ConfirmPanel } from './ConfirmPanel'
 import type { DraftItem } from '@/components/ConfirmFoodChips'
 import { ConfirmHeader } from './ConfirmHeader'
 
-type Per100g = {
-  protein_g: number; carbs_g: number; fat_g: number; fiber_g: number
-  sat_fat_g: number; sugar_g: number; sodium_mg: number; kcal: number
-}
-
 type Suggestion = {
   description: string
   portion: 'small' | 'medium' | 'large'
-  resolved_food_id: string | null
-  resolution: 'auto' | 'llm_disambig' | 'llm_estimate' | 'unmatched'
-  candidates: Array<{ food_id: string; display_name: string; similarity: number }>
-  estimated_per_100g?: Per100g
-  llm_category?: Category
-  llm_quality?: QualityTier
+  estimated_per_100g: Per100g
+  llm_category: Category
+  llm_quality: QualityTier
 }
 
-type ConfirmedFood =
-  | { food_id: string; portion_size: 'small' | 'medium' | 'large' | 'custom'; portion_g: number }
-  | {
-      food_id: null
-      display_name: string
-      llm_macros_per_100g: Per100g
-      llm_category: Category
-      llm_quality: QualityTier
-      portion_size: 'small' | 'medium' | 'large' | 'custom'
-      portion_g: number
-    }
+type ConfirmedFood = {
+  display_name: string
+  llm_macros_per_100g: Per100g
+  llm_category: Category
+  llm_quality: QualityTier
+  portion_size: 'small' | 'medium' | 'large' | 'custom'
+  portion_g: number
+}
 
 const FALLBACK_DEFAULTS = { small: 80, medium: 150, large: 250 }
 
@@ -65,22 +54,12 @@ export default async function ConfirmPage({ params }: { params: Promise<{ id: st
   const suggestions = (meal.llm_suggested_foods ?? []) as Suggestion[]
   const confirmed = (meal.confirmed_foods ?? []) as ConfirmedFood[]
 
-  const idsNeeded = new Set<string>()
-  for (const s of suggestions) {
-    if (s.resolved_food_id) idsNeeded.add(s.resolved_food_id)
-    for (const c of s.candidates) idsNeeded.add(c.food_id)
-  }
-  for (const c of confirmed) if (c.food_id !== null) idsNeeded.add(c.food_id)
-
-  const foods = await foodsById(Array.from(idsNeeded))
-  const byId = new Map(foods.map((f) => [f.id, f]))
-
   const { data: signed } = await supabase.storage.from('meals').createSignedUrl(meal.image_path, 600)
 
   const drafts =
     confirmed.length > 0
-      ? confirmedToDrafts(confirmed, byId)
-      : suggestionsToDrafts(suggestions, byId)
+      ? confirmedToDrafts(confirmed)
+      : suggestionsToDrafts(suggestions)
 
   return (
     <section
@@ -105,63 +84,29 @@ export default async function ConfirmPage({ params }: { params: Promise<{ id: st
   )
 }
 
-function suggestionsToDrafts(suggestions: Suggestion[], byId: Map<string, CachedFood>): DraftItem[] {
-  return suggestions.map((s): DraftItem => {
-    const food = s.resolved_food_id ? byId.get(s.resolved_food_id) ?? null : null
-    const defaults = food?.default_portion_g ?? FALLBACK_DEFAULTS
-    const candidates = s.candidates.map((c) => ({ food_id: c.food_id, display_name: c.display_name }))
-
-    if (food) {
-      return {
-        draft_id: cryptoRandom(),
-        food_id: food.id,
-        display_name: food.display_name,
-        defaults,
-        portion: { size: s.portion, grams: defaults[s.portion] },
-        description: s.description,
-        candidates,
-      }
-    }
-
-    return {
-      draft_id: cryptoRandom(),
-      food_id: null,
-      display_name: titleCase(s.description),
-      defaults,
-      portion: { size: s.portion, grams: defaults[s.portion] },
-      description: s.description,
-      candidates,
-      llm_macros_per_100g: s.estimated_per_100g,
-      llm_category: s.llm_category,
-      llm_quality: s.llm_quality,
-    }
-  })
+function suggestionsToDrafts(suggestions: Suggestion[]): DraftItem[] {
+  return suggestions.map((s): DraftItem => ({
+    draft_id: cryptoRandom(),
+    display_name: titleCase(s.description),
+    defaults: FALLBACK_DEFAULTS,
+    portion: { size: s.portion, grams: FALLBACK_DEFAULTS[s.portion] },
+    description: s.description,
+    llm_macros_per_100g: s.estimated_per_100g,
+    llm_category: s.llm_category,
+    llm_quality: s.llm_quality,
+  }))
 }
 
-function confirmedToDrafts(confirmed: ConfirmedFood[], byId: Map<string, CachedFood>): DraftItem[] {
-  return confirmed.map((c): DraftItem => {
-    if (c.food_id !== null) {
-      const food = byId.get(c.food_id)
-      const defaults = food?.default_portion_g ?? FALLBACK_DEFAULTS
-      return {
-        draft_id: cryptoRandom(),
-        food_id: c.food_id,
-        display_name: food?.display_name ?? c.food_id,
-        defaults,
-        portion: { size: c.portion_size, grams: c.portion_g },
-      }
-    }
-    return {
-      draft_id: cryptoRandom(),
-      food_id: null,
-      display_name: c.display_name,
-      defaults: FALLBACK_DEFAULTS,
-      portion: { size: c.portion_size, grams: c.portion_g },
-      llm_macros_per_100g: c.llm_macros_per_100g,
-      llm_category: c.llm_category,
-      llm_quality: c.llm_quality,
-    }
-  })
+function confirmedToDrafts(confirmed: ConfirmedFood[]): DraftItem[] {
+  return confirmed.map((c): DraftItem => ({
+    draft_id: cryptoRandom(),
+    display_name: c.display_name,
+    defaults: FALLBACK_DEFAULTS,
+    portion: { size: c.portion_size, grams: c.portion_g },
+    llm_macros_per_100g: c.llm_macros_per_100g,
+    llm_category: c.llm_category,
+    llm_quality: c.llm_quality,
+  }))
 }
 
 function titleCase(s: string): string {
